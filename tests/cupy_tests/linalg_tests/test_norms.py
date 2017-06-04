@@ -2,6 +2,7 @@ import unittest
 
 import numpy
 
+from cupy import cuda
 from cupy import testing
 
 
@@ -59,6 +60,9 @@ class TestNorm(unittest.TestCase):
             return xp.linalg.norm(a, self.ord, self.axis, self.keepdims)
 
 
+@unittest.skipUnless(
+    cuda.cusolver_enabled, 'Only cusolver in CUDA 8.0 is supported')
+@testing.gpu
 class TestSlogdet(unittest.TestCase):
 
     _multiprocess_can_split_ = True
