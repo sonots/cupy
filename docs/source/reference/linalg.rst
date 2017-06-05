@@ -21,4 +21,5 @@ Decompositions
 Norms etc.
 ----------
 
+.. autofunction:: cupy.linalg.slogdet
 .. autofunction:: cupy.trace
