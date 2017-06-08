@@ -5,6 +5,18 @@
 [![Read the Docs](https://readthedocs.org/projects/cupy/badge/?version=stable)](http://docs.cupy.chainer.org/en/stable/?badge=stable)
 
 # CuPy : NumPy-like API accelerated with CUDA
+[**Website**](http://cupy.chainer.org/)
+| [**Docs**](http://docs.cupy.chainer.org/en/stable/)
+| [**Install Guide**](http://docs.cupy.chainer.org/en/stable/install.html)
+| [**Tutorial**](http://docs.cupy.chainer.org/en/stable/tutorial/)
+| **Examples** ([Official](https://github.com/cupy/cupy/blob/master/examples))
+| **Forum** ([en](https://groups.google.com/forum/#!forum/cupy), [ja](https://groups.google.com/forum/#!forum/cupy-jp))
+| **Slack** ([en](https://bit.ly/chainer-slack), [ja](https://bit.ly/chainer-jp-slack))
+| **Twitter** ([en](https://twitter.com/ChainerOfficial), [ja](https://twitter.com/ChainerJP))
+
+*CuPy* is an implementation of NumPy-compatible multi-dimensional array on CUDA.
+CuPy consists of the core multi-dimensional array class, `cupy.ndarray`, and many functions on it.
+It supports a subset of `numpy.ndarray` interface.
 
 ## Requirements
 
@@ -86,14 +98,8 @@ $ nvidia-docker run -it cupy/cupy /bin/bash
 
 ## More information
 
-- Official site: (to be appeared)
-- Official document: http://docs.cupy.chainer.org/
-- github: https://github.com/cupy/cupy
-- Forum: https://groups.google.com/forum/#!forum/cupy
-- Forum (Japanese): https://groups.google.com/forum/#!forum/cupy-ja
-- Twitter: https://twitter.com/ChainerOfficial
-- Twitter (Japanese): https://twitter.com/chainerjp
-- Research projects using Chainer: https://github.com/pfnet/chainer/wiki/Research-projects-using-Chainer
+- [Release notes](https://github.com/cupy/cupy/releases)
+- [Projects using CuPy](https://github.com/cupy/cupy/wiki/Projects-using-CuPy)
 
 ## License
 
