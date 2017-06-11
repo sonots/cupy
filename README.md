@@ -5,7 +5,7 @@
 [![Read the Docs](https://readthedocs.org/projects/cupy/badge/?version=stable)](http://docs.cupy.chainer.org/en/stable/?badge=stable)
 
 # CuPy : NumPy-like API accelerated with CUDA
-[**Website**](http://cupy.chainer.org/)
+[**Website**](https://cupy.chainer.org/)
 | [**Docs**](http://docs.cupy.chainer.org/en/stable/)
 | [**Install Guide**](http://docs.cupy.chainer.org/en/stable/install.html)
 | [**Tutorial**](http://docs.cupy.chainer.org/en/stable/tutorial/)
