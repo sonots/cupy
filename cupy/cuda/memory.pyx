@@ -379,6 +379,7 @@ cdef class SingleDeviceMemoryPool:
     def __init__(self, allocator=_malloc):
         # cudaMalloc() is aligned to at least 512 bytes
         # cf. https://gist.github.com/sonots/41daaa6432b1c8b27ef782cd14064269
+        self._alloc_size = 1024 * 1024 # 1MiB
         self._allocation_unit_size = 512
         self._initial_bins_size = 1024
         self._in_use = {}
@@ -421,6 +422,7 @@ cdef class SingleDeviceMemoryPool:
         remaining.prev = head
         remaining.next = chunk.next
         index = self._bin_index_from_size(remaining.size)
+        self._grow_free_if_necessary(index + 1)
         self._free[index].append(remaining)
         return [head, remaining]
 
@@ -461,20 +463,22 @@ cdef class SingleDeviceMemoryPool:
 
         # cudaMalloc if not found
         if chunk is None:
+            size2 = (((size + self._alloc_size - 1) // self._alloc_size) * self._alloc_size)
             try:
-                mem = self._alloc(size).mem
+                mem = self._alloc(size2).mem
             except runtime.CUDARuntimeError as e:
                 if e.status != runtime.errorMemoryAllocation:
                     raise
                 self.free_all_blocks()
                 try:
-                    mem = self._alloc(size).mem
+                    mem = self._alloc(size2).mem
                 except runtime.CUDARuntimeError as e:
                     if e.status != runtime.errorMemoryAllocation:
                         raise
                     gc.collect()
-                    mem = self._alloc(size).mem
-            chunk = Chunk(mem, 0, size)
+                    mem = self._alloc(size2).mem
+            chunk = Chunk(mem, 0, size2)
+            chunk, _remaining = self._split(chunk, size)
 
         chunk.in_use = True
         self._in_use[chunk.ptr] = chunk
