@@ -344,7 +344,59 @@ cdef class SingleDeviceMemoryPool:
         # cf. https://gist.github.com/sonots/41daaa6432b1c8b27ef782cd14064269
         self._allocation_unit_size = 512
 
+    cpdef add_hook(self, hook, name=None):
+        """Registers the function hook.
+
+        Args:
+            hook(~chainer.function.FunctionHook):
+                Function hook to be registered.
+            name(str): Name of the function hook.
+                name must be unique among function hooks
+                registered to the function. If ``None``,
+                default name of the function hook is used.
+        """
+        if not isinstance(hook, FunctionHook):
+            raise TypeError('Hook must be a FunctionHook')
+        if name is None:
+            name = hook.name
+        if name in self.local_hooks:
+            raise KeyError('Hook %s already exists' % name)
+        self.local_hooks[name] = hook
+
+    cpdef delete_hook(self, name):
+        """Unregisters the function hook.
+
+        Args:
+            name(str): the name of the function hook
+                to be unregistered.
+        """
+        del self.local_hooks[name]
+
     cpdef MemoryPointer malloc(self, Py_ssize_t size):
+        hooks = self.local_hooks.values()
+        for hook in hooks:
+            hook.malloc_preprocess(self, size)
+        memptr = self._malloc(size)
+        for hook in hooks:
+            hook.malloc_postprocess(self, size)
+
+    cpdef free(self, size_t ptr, Py_ssize_t size):
+        hooks = self.local_hooks.values()
+        for hook in hooks:
+            hook.free_preprocess(self, size)
+        self._free(ptr, size)
+        for hook in hooks:
+            hook.free_postprocess(self, size)
+
+    cpdef free_all_blocks(self):
+        hooks = self.local_hooks.values()
+        for hook in hooks:
+            for free_list in self._free.values():
+                for mem in free_list:
+                    hook.free_preprocess(self, mem.size)
+        self._free.clear()
+
+    cpdef MemoryPointer _malloc(self, Py_ssize_t size):
         cdef list free
         cdef Memory mem
 
@@ -376,7 +428,7 @@ cdef class SingleDeviceMemoryPool:
         pmem = PooledMemory(mem, self._weakref)
         return MemoryPointer(pmem, 0)
 
-    cpdef free(self, size_t ptr, Py_ssize_t size):
+    cpdef _free(self, size_t ptr, Py_ssize_t size):
         cdef list free
         cdef Memory mem
         mem = self._in_use.pop(ptr, None)
@@ -385,7 +437,7 @@ cdef class SingleDeviceMemoryPool:
         free = self._free[size]
         free.append(mem)
 
-    cpdef free_all_blocks(self):
+    cpdef _free_all_blocks(self):
         self._free.clear()
 
     cpdef free_all_free(self):
@@ -448,6 +500,30 @@ cdef class MemoryPool(object):
     def __init__(self, allocator=_malloc):
         self._pools = collections.defaultdict(
             lambda: SingleDeviceMemoryPool(allocator))
+
+    cpdef add_hook(self, hook, name=None):
+        """Registers the function hook.
+
+        Args:
+            hook(~chainer.function.FunctionHook):
+                Function hook to be registered.
+            name(str): Name of the function hook.
+                name must be unique among function hooks
+                registered to the function. If ``None``,
+                default name of the function hook is used.
+        """
+        mp = <SingleDeviceMemoryPool>self._pools[device.get_device_id()]
+        return mp.add_hook(hook, name)
+
+    cpdef delete_hook(self, name):
+        """Unregisters the function hook.
+
+        Args:
+            name(str): the name of the function hook
+                to be unregistered.
+        """
+        mp = <SingleDeviceMemoryPool>self._pools[device.get_device_id()]
+        return mp.delete_hook(name)
 
     cpdef MemoryPointer malloc(self, Py_ssize_t size):
         """Allocates the memory, from the pool if possible.
