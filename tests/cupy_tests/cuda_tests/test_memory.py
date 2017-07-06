@@ -113,128 +113,129 @@ class TestSingleDeviceMemoryPool(unittest.TestCase):
         self.assertNotEqual(p1.ptr, p2.ptr)
         self.assertNotEqual(p1.ptr, p3.ptr)
         self.assertNotEqual(p2.ptr, p3.ptr)
+        self.pool.print_profile()
 
-    def test_free(self):
-        p1 = self.pool.malloc(1000)
-        ptr1 = p1.ptr
-        del p1
-        p2 = self.pool.malloc(1000)
-        self.assertEqual(ptr1, p2.ptr)
-
-    def test_free_different_size(self):
-        p1 = self.pool.malloc(1000)
-        ptr1 = p1.ptr
-        del p1
-        p2 = self.pool.malloc(2000)
-        self.assertNotEqual(ptr1, p2.ptr)
-
-    def test_free_all_blocks(self):
-        p1 = self.pool.malloc(1000)
-        ptr1 = p1.ptr
-        del p1
-        self.pool.free_all_blocks()
-        p2 = self.pool.malloc(1000)
-        self.assertNotEqual(ptr1, p2.ptr)
-
-    def test_free_all_free(self):
-        p1 = self.pool.malloc(1000)
-        ptr1 = p1.ptr
-        del p1
-        self.pool.free_all_free()
-        p2 = self.pool.malloc(1000)
-        self.assertNotEqual(ptr1, p2.ptr)
-
-    def test_used_bytes(self):
-        p1 = self.pool.malloc(1000)
-        self.assertEqual(1024, self.pool.used_bytes())
-        p2 = self.pool.malloc(2000)
-        self.assertEqual(3072, self.pool.used_bytes())
-        del p1
-        del p2
-
-    def test_free_bytes(self):
-        p1 = self.pool.malloc(1000)
-        del p1
-        self.assertEqual(1024, self.pool.free_bytes())
-        p2 = self.pool.malloc(2000)
-        del p2
-        self.assertEqual(3072, self.pool.free_bytes())
-
-    def test_total_bytes(self):
-        p1 = self.pool.malloc(1000)
-        self.assertEqual(1024, self.pool.total_bytes())
-        p2 = self.pool.malloc(2000)
-        del p1
-        self.assertEqual(3072, self.pool.total_bytes())
-        del p2
-        self.assertEqual(3072, self.pool.total_bytes())
-
-
-@testing.gpu
-class TestMemoryPool(unittest.TestCase):
-
-    def setUp(self):
-        self.pool = memory.MemoryPool()
-
-    def test_zero_size_alloc(self):
-        with cupy.cuda.Device(0):
-            mem = self.pool.malloc(0).mem
-            self.assertIsInstance(mem, memory.Memory)
-            self.assertNotIsInstance(mem, memory.PooledMemory)
-
-    def test_double_free(self):
-        with cupy.cuda.Device(0):
-            mem = self.pool.malloc(1).mem
-            mem.free()
-            mem.free()
-
-    def test_free_all_blocks(self):
-        with cupy.cuda.Device(0):
-            mem = self.pool.malloc(1).mem
-            self.assertIsInstance(mem, memory.Memory)
-            self.assertIsInstance(mem, memory.PooledMemory)
-            self.assertEqual(self.pool.n_free_blocks(), 0)
-            mem.free()
-            self.assertEqual(self.pool.n_free_blocks(), 1)
-            self.pool.free_all_blocks()
-            self.assertEqual(self.pool.n_free_blocks(), 0)
-
-    def test_free_all_blocks_without_malloc(self):
-        with cupy.cuda.Device(0):
-            # call directly without malloc.
-            self.pool.free_all_blocks()
-            self.assertEqual(self.pool.n_free_blocks(), 0)
-
-    def test_free_all_free(self):
-        with cupy.cuda.Device(0):
-            mem = self.pool.malloc(1).mem
-            self.assertIsInstance(mem, memory.Memory)
-            self.assertIsInstance(mem, memory.PooledMemory)
-            self.assertEqual(self.pool.n_free_blocks(), 0)
-            mem.free()
-            self.assertEqual(self.pool.n_free_blocks(), 1)
-            self.pool.free_all_free()
-            self.assertEqual(self.pool.n_free_blocks(), 0)
-
-    def test_free_all_free_without_malloc(self):
-        with cupy.cuda.Device(0):
-            # call directly without malloc.
-            self.pool.free_all_free()
-            self.assertEqual(self.pool.n_free_blocks(), 0)
-
-    def test_n_free_blocks_without_malloc(self):
-        with cupy.cuda.Device(0):
-            # call directly without malloc/free_all_free.
-            self.assertEqual(self.pool.n_free_blocks(), 0)
-
-    def test_used_bytes(self):
-        with cupy.cuda.Device(0):
-            self.assertEqual(0, self.pool.used_bytes())
-
-    def test_free_bytes(self):
-        with cupy.cuda.Device(0):
-            self.assertEqual(0, self.pool.free_bytes())
-
-    def test_total_bytes(self):
-        with cupy.cuda.Device(0):
-            self.assertEqual(0, self.pool.total_bytes())
+#     def test_free(self):
+#         p1 = self.pool.malloc(1000)
+#         ptr1 = p1.ptr
+#         del p1
+#         p2 = self.pool.malloc(1000)
+#         self.assertEqual(ptr1, p2.ptr)
+# 
+#     def test_free_different_size(self):
+#         p1 = self.pool.malloc(1000)
+#         ptr1 = p1.ptr
+#         del p1
+#         p2 = self.pool.malloc(2000)
+#         self.assertNotEqual(ptr1, p2.ptr)
+# 
+#     def test_free_all_blocks(self):
+#         p1 = self.pool.malloc(1000)
+#         ptr1 = p1.ptr
+#         del p1
+#         self.pool.free_all_blocks()
+#         p2 = self.pool.malloc(1000)
+#         self.assertNotEqual(ptr1, p2.ptr)
+# 
+#     def test_free_all_free(self):
+#         p1 = self.pool.malloc(1000)
+#         ptr1 = p1.ptr
+#         del p1
+#         self.pool.free_all_free()
+#         p2 = self.pool.malloc(1000)
+#         self.assertNotEqual(ptr1, p2.ptr)
+# 
+#     def test_used_bytes(self):
+#         p1 = self.pool.malloc(1000)
+#         self.assertEqual(1024, self.pool.used_bytes())
+#         p2 = self.pool.malloc(2000)
+#         self.assertEqual(3072, self.pool.used_bytes())
+#         del p1
+#         del p2
+# 
+#     def test_free_bytes(self):
+#         p1 = self.pool.malloc(1000)
+#         del p1
+#         self.assertEqual(1024, self.pool.free_bytes())
+#         p2 = self.pool.malloc(2000)
+#         del p2
+#         self.assertEqual(3072, self.pool.free_bytes())
+# 
+#     def test_total_bytes(self):
+#         p1 = self.pool.malloc(1000)
+#         self.assertEqual(1024, self.pool.total_bytes())
+#         p2 = self.pool.malloc(2000)
+#         del p1
+#         self.assertEqual(3072, self.pool.total_bytes())
+#         del p2
+#         self.assertEqual(3072, self.pool.total_bytes())
+# 
+# 
+# @testing.gpu
+# class TestMemoryPool(unittest.TestCase):
+# 
+#     def setUp(self):
+#         self.pool = memory.MemoryPool()
+# 
+#     def test_zero_size_alloc(self):
+#         with cupy.cuda.Device(0):
+#             mem = self.pool.malloc(0).mem
+#             self.assertIsInstance(mem, memory.Memory)
+#             self.assertNotIsInstance(mem, memory.PooledMemory)
+# 
+#     def test_double_free(self):
+#         with cupy.cuda.Device(0):
+#             mem = self.pool.malloc(1).mem
+#             mem.free()
+#             mem.free()
+# 
+#     def test_free_all_blocks(self):
+#         with cupy.cuda.Device(0):
+#             mem = self.pool.malloc(1).mem
+#             self.assertIsInstance(mem, memory.Memory)
+#             self.assertIsInstance(mem, memory.PooledMemory)
+#             self.assertEqual(self.pool.n_free_blocks(), 0)
+#             mem.free()
+#             self.assertEqual(self.pool.n_free_blocks(), 1)
+#             self.pool.free_all_blocks()
+#             self.assertEqual(self.pool.n_free_blocks(), 0)
+# 
+#     def test_free_all_blocks_without_malloc(self):
+#         with cupy.cuda.Device(0):
+#             # call directly without malloc.
+#             self.pool.free_all_blocks()
+#             self.assertEqual(self.pool.n_free_blocks(), 0)
+# 
+#     def test_free_all_free(self):
+#         with cupy.cuda.Device(0):
+#             mem = self.pool.malloc(1).mem
+#             self.assertIsInstance(mem, memory.Memory)
+#             self.assertIsInstance(mem, memory.PooledMemory)
+#             self.assertEqual(self.pool.n_free_blocks(), 0)
+#             mem.free()
+#             self.assertEqual(self.pool.n_free_blocks(), 1)
+#             self.pool.free_all_free()
+#             self.assertEqual(self.pool.n_free_blocks(), 0)
+# 
+#     def test_free_all_free_without_malloc(self):
+#         with cupy.cuda.Device(0):
+#             # call directly without malloc.
+#             self.pool.free_all_free()
+#             self.assertEqual(self.pool.n_free_blocks(), 0)
+# 
+#     def test_n_free_blocks_without_malloc(self):
+#         with cupy.cuda.Device(0):
+#             # call directly without malloc/free_all_free.
+#             self.assertEqual(self.pool.n_free_blocks(), 0)
+# 
+#     def test_used_bytes(self):
+#         with cupy.cuda.Device(0):
+#             self.assertEqual(0, self.pool.used_bytes())
+# 
+#     def test_free_bytes(self):
+#         with cupy.cuda.Device(0):
+#             self.assertEqual(0, self.pool.free_bytes())
+# 
+#     def test_total_bytes(self):
+#         with cupy.cuda.Device(0):
+#             self.assertEqual(0, self.pool.total_bytes())

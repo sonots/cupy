@@ -1,5 +1,21 @@
 from cupy.cuda cimport device
 
+cdef class MemoryProfile:
+
+    cdef:
+        object _memory_frames
+        MemoryProfileFrame _root
+
+    cpdef add(self, Py_ssize_t size)
+    cpdef print_report(self, end=?, file=?)
+
+cdef class MemoryProfileFrame:
+
+    cdef:
+        public set children
+        public object stackframe
+        public Py_ssize_t size
+
 cdef class Memory:
 
     cdef:
@@ -50,6 +66,7 @@ cdef class SingleDeviceMemoryPool:
         object __weakref__
         object _weakref
         Py_ssize_t _allocation_unit_size
+        object _memory_profile
 
     cpdef MemoryPointer malloc(self, Py_ssize_t size)
     cpdef free(self, size_t ptr, Py_ssize_t size)
@@ -59,6 +76,7 @@ cdef class SingleDeviceMemoryPool:
     cpdef used_bytes(self)
     cpdef free_bytes(self)
     cpdef total_bytes(self)
+    cpdef print_profile(self)
 
 
 cdef class MemoryPool:

@@ -3,6 +3,8 @@
 import collections
 import ctypes
 import gc
+import sys
+import traceback
 import warnings
 import weakref
 
@@ -12,6 +14,82 @@ from cupy.cuda import runtime
 
 from cupy.cuda cimport device
 from cupy.cuda cimport runtime
+
+cdef class MemoryProfile:
+    """Code line GPU memory profiler.
+   
+    This profiler uses traceback module, and it can trace only cpython
+    code level, no cython code level.
+    ref. https://github.com/cython/cython/issues/1755
+    """
+
+    def __init__(self):
+        self._memory_frames = {}
+        self._root = MemoryProfileFrame(None, None, 0)
+
+    cpdef add(self, Py_ssize_t size):
+        stackframes = traceback.extract_stack()
+        parent = self._root
+        for stackframe in stackframes:
+            parent = self._add_frame(stackframe, parent, size)
+
+    def _key_frame(self, stackframe):
+        return (stackframe.filename, stackframe.lineno, stackframe.name)
+
+    def _add_frame(self, stackframe, parent, size):
+        print(stackframe, parent, size)
+        memory_frame = None
+        key = self._key_frame(stackframe)
+        if key in self._memory_frames:
+            memory_frame = self._memory_frames[key]
+            memory_frame.add_size(size)
+        else:
+            memory_frame = MemoryProfileFrame(stackframe, parent, size)
+            self._memory_frames[key] = memory_frame
+        return memory_frame
+
+    cpdef print_report(self, end='\n', file=sys.stdout):
+        size = self._humanized_size(self._root.size)
+        line = '_root (%s)' % (size)
+        six.print_(line, end=end, file=file)
+        for child in self._root.children:
+            self._print_frame(child, depth=1, end=end, file=file)
+
+    def _humanized_size(self, size):
+         for unit in ['', 'K', 'M', 'G', 'T', 'P', 'E']:
+             if size < 1024.0:
+                 return "%3.2f%sB" % (size, unit)
+             size /= 1024.0
+         return "%.2f%sB" % (size, 'Z')
+
+    def _print_frame(self, memory_frame, depth=0, end='\n', file=sys.stdout):
+        indent = ' ' * (depth * 2)
+        st = memory_frame.stackframe
+        size = self._humanized_size(memory_frame.size)
+        line = "%s%s:%s:%s (%s)" % (indent, st.filename, st.lineno, st.name, size)
+        six.print_(line, end=end, file=file)
+        for child in memory_frame.children:
+            self._print_frame(child, depth=depth+1, end=end, file=file)
+
+cdef class MemoryProfileFrame:
+    """MemoryProfileStack objects represent a single frame in a traceback."""
+   
+    def __init__(self, stackframe, parent, size):
+        self.children = set()
+        self.set_parent(parent)
+        self.stackframe = stackframe
+        self.size = size
+
+    def add_size(self, size):
+        self.size += size
+
+    def set_parent(self, parent):
+        if parent:
+            parent.children.add(self)
+
+    @staticmethod
+    def key(stackframe):
+        return (stackframe.filename, stackframe.lineno, stackframe.name)
 
 
 cdef class Memory:
@@ -343,6 +421,7 @@ cdef class SingleDeviceMemoryPool:
         # cudaMalloc() is aligned to at least 512 bytes
         # cf. https://gist.github.com/sonots/41daaa6432b1c8b27ef782cd14064269
         self._allocation_unit_size = 512
+        self._memory_profile = MemoryProfile()
 
     cpdef MemoryPointer malloc(self, Py_ssize_t size):
         cdef list free
@@ -359,6 +438,7 @@ cdef class SingleDeviceMemoryPool:
             mem = free.pop()
         else:
             try:
+                self._memory_profile.add(size)
                 mem = self._alloc(size).mem
             except runtime.CUDARuntimeError as e:
                 if e.status != runtime.errorMemoryAllocation:
@@ -415,6 +495,9 @@ cdef class SingleDeviceMemoryPool:
 
     cpdef total_bytes(self):
         return self.used_bytes() + self.free_bytes()
+
+    cpdef print_profile(self):
+        self._memory_profile.print_report()
 
 
 cdef class MemoryPool(object):
