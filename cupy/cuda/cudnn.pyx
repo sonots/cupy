@@ -7,7 +7,7 @@ from libcpp cimport vector
 import numpy
 
 from cupy.cuda cimport driver
-
+from cupy.cuda.stream import get_current_stream
 
 ###############################################################################
 # Extern
@@ -619,6 +619,9 @@ cpdef convolutionForward(
         size_t filterDesc, size_t filterData, size_t convDesc, int algo,
         size_t workSpace, size_t workSpaceSizeInBytes, size_t beta,
         size_t destDesc, size_t destData):
+    stream = get_current_stream()
+    if stream:
+        setStream(handle, stream.ptr)
     with nogil:
         status = cudnnConvolutionForward(
             <Handle>handle, <void*>alpha,

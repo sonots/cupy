@@ -3,6 +3,11 @@ import threading
 
 
 thread_local = threading.local()
+streams = {}
+
+
+def get_streams():
+    return streams
 
 
 def get_current_stream():
@@ -118,10 +123,15 @@ class Stream(object):
             self.ptr = runtime.streamCreateWithFlags(runtime.streamNonBlocking)
         else:
             self.ptr = runtime.streamCreate()
+        streams = get_streams()
+        streams[self.ptr] = self
 
     def __del__(self):
         if self.ptr:
             runtime.streamDestroy(self.ptr)
+            thread_local.current_stream = None
+            streams = get_streams()
+            del streams[self.ptr]
 
     def __enter__(self):
         thread_local.current_stream = self

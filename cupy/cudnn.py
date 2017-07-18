@@ -8,7 +8,7 @@ import cupy
 from cupy.core import internal
 from cupy import cuda
 from cupy.cuda import cudnn
-
+from cupy.cuda.stream import get_streams
 
 _cudnn_version = cudnn.getVersion()
 _thread_local = threading.local()
@@ -23,6 +23,21 @@ def get_handle():
     handle = cudnn.create()
     _handles[dev] = handle
     return handle
+
+
+def set_stream(stream):
+    handle = get_handle()
+    cudnn.setStream(handle, stream.ptr)
+
+
+def get_stream():
+    handle = get_handle()
+    stream_ptr = cudnn.getStream(handle)
+    streams = get_streams()
+    if stream_ptr in streams:
+        return streams[stream_ptr]
+    else:
+        return None
 
 
 @atexit.register
