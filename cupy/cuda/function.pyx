@@ -8,7 +8,7 @@ from libcpp cimport vector
 
 from cupy.cuda cimport driver
 from cupy.core cimport core
-
+from cupy.cuda.stream import get_current_stream
 
 cdef extern from "cupy_stdint.h" nogil:
     ctypedef signed char int8_t
@@ -92,7 +92,8 @@ cdef inline CPointer _pointer(x):
     raise TypeError('Unsupported type %s. (size=%d)', type(x), itemsize)
 
 
-cdef inline size_t _get_stream(strm) except *:
+cdef inline size_t _get_current_stream() except *:
+    strm = get_current_stream()
     return 0 if strm is None else strm.ptr
 
 
@@ -121,25 +122,24 @@ cdef class Function:
         self.module = module  # to keep module loaded
         self.ptr = driver.moduleGetFunction(module.ptr, funcname)
 
-    def __call__(self, tuple grid, tuple block, args, size_t shared_mem=0,
-                 stream=None):
+    def __call__(self, tuple grid, tuple block, args, size_t shared_mem=0):
         grid = (grid + (1, 1))[:3]
         block = (block + (1, 1))[:3]
-        s = _get_stream(stream)
+        s = _get_current_stream()
         _launch(
             self.ptr,
             grid[0], grid[1], grid[2], block[0], block[1], block[2],
             args, shared_mem, s)
 
     cpdef linear_launch(self, size_t size, args, size_t shared_mem=0,
-                        size_t block_max_size=128, stream=None):
+            size_t block_max_size=128):
         # TODO(beam2d): Tune it
         gridx = size // block_max_size + 1
         if gridx > 65536:
             gridx = 65536
         if size > block_max_size:
             size = block_max_size
-        s = _get_stream(stream)
+        s = _get_current_stream()
         _launch(self.ptr,
                 gridx, 1, 1, size, 1, 1, args, shared_mem, s)
 

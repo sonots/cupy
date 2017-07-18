@@ -10,6 +10,8 @@ from cupy.cuda import runtime
 
 from cupy.cuda cimport device
 from cupy.cuda cimport runtime
+from cupy.cuda.stream import Stream
+from cupy.cuda.stream import get_current_stream
 
 
 cdef class Memory:
@@ -455,7 +457,7 @@ cdef class SingleDeviceMemoryPool:
             merged.next.prev = merged
         return merged
 
-    cpdef MemoryPointer malloc(self, Py_ssize_t size, stream=None):
+    cpdef MemoryPointer malloc(self, Py_ssize_t size):
         cdef list free_list = None
         cdef Chunk chunk = None
         cdef MemoryPointer memptr
@@ -464,6 +466,7 @@ cdef class SingleDeviceMemoryPool:
         if size == 0:
             return MemoryPointer(Memory(0), 0)
 
+        stream = get_current_stream()
         size = self._round_size(size)
         index = self._bin_index_from_size(size)
         # find best-fit, or a smallest larger allocation

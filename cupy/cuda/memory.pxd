@@ -65,7 +65,7 @@ cdef class SingleDeviceMemoryPool:
         readonly Py_ssize_t _allocation_unit_size
         readonly Py_ssize_t _initial_bins_size
 
-    cpdef MemoryPointer malloc(self, Py_ssize_t size, stream=?)
+    cpdef MemoryPointer malloc(self, Py_ssize_t size)
     cpdef free(self, size_t ptr, Py_ssize_t size)
     cpdef free_all_blocks(self)
     cpdef free_all_free(self)
