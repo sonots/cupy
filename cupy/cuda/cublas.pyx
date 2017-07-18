@@ -5,7 +5,7 @@ cimport cython
 
 from cupy.cuda cimport driver
 from cupy.cuda cimport runtime
-
+from cupy.cuda import stream
 
 ###############################################################################
 # Extern
@@ -203,6 +203,7 @@ cpdef size_t getStream(size_t handle) except *:
 
 cpdef int isamax(size_t handle, int n, size_t x, int incx) except *:
     cdef int result
+    setStream(handle, stream.get_current_stream().ptr)
     with nogil:
         status = cublasIsamax(
             <Handle>handle, n, <float*>x, incx, &result)
@@ -212,6 +213,7 @@ cpdef int isamax(size_t handle, int n, size_t x, int incx) except *:
 
 cpdef int isamin(size_t handle, int n, size_t x, int incx) except *:
     cdef int result
+    setStream(handle, stream.get_current_stream().ptr)
     with nogil:
         status = cublasIsamin(
             <Handle>handle, n, <float*>x, incx, &result)
@@ -221,6 +223,7 @@ cpdef int isamin(size_t handle, int n, size_t x, int incx) except *:
 
 cpdef float sasum(size_t handle, int n, size_t x, int incx) except *:
     cdef float result
+    setStream(handle, stream.get_current_stream().ptr)
     with nogil:
         status = cublasSasum(
             <Handle>handle, n, <float*>x, incx, &result)
@@ -230,6 +233,7 @@ cpdef float sasum(size_t handle, int n, size_t x, int incx) except *:
 
 cpdef saxpy(size_t handle, int n, float alpha, size_t x, int incx, size_t y,
             int incy):
+    setStream(handle, stream.get_current_stream().ptr)
     with nogil:
         status = cublasSaxpy(
             <Handle>handle, n, &alpha, <float*>x, incx, <float*>y, incy)
@@ -238,6 +242,7 @@ cpdef saxpy(size_t handle, int n, float alpha, size_t x, int incx, size_t y,
 
 cpdef daxpy(size_t handle, int n, double alpha, size_t x, int incx, size_t y,
             int incy):
+    setStream(handle, stream.get_current_stream().ptr)
     with nogil:
         status = cublasDaxpy(
             <Handle>handle, n, &alpha, <double*>x, incx, <double*>y, incy)
@@ -246,6 +251,7 @@ cpdef daxpy(size_t handle, int n, double alpha, size_t x, int incx, size_t y,
 
 cpdef sdot(size_t handle, int n, size_t x, int incx, size_t y, int incy,
            size_t result):
+    setStream(handle, stream.get_current_stream().ptr)
     with nogil:
         status = cublasSdot(
             <Handle>handle, n, <float*>x, incx, <float*>y, incy,
@@ -255,6 +261,7 @@ cpdef sdot(size_t handle, int n, size_t x, int incx, size_t y, int incy,
 
 cpdef ddot(size_t handle, int n, size_t x, int incx, size_t y, int incy,
            size_t result):
+    setStream(handle, stream.get_current_stream().ptr)
     with nogil:
         status = cublasDdot(
             <Handle>handle, n, <double*>x, incx, <double*>y, incy,
@@ -264,6 +271,7 @@ cpdef ddot(size_t handle, int n, size_t x, int incx, size_t y, int incy,
 
 cpdef float snrm2(size_t handle, int n, size_t x, int incx) except *:
     cdef float result
+    setStream(handle, stream.get_current_stream().ptr)
     with nogil:
         status = cublasSnrm2(<Handle>handle, n, <float*>x, incx, &result)
     check_status(status)
@@ -271,6 +279,7 @@ cpdef float snrm2(size_t handle, int n, size_t x, int incx) except *:
 
 
 cpdef sscal(size_t handle, int n, float alpha, size_t x, int incx):
+    setStream(handle, stream.get_current_stream().ptr)
     with nogil:
         status = cublasSscal(<Handle>handle, n, &alpha, <float*>x, incx)
     check_status(status)
@@ -282,6 +291,7 @@ cpdef sscal(size_t handle, int n, float alpha, size_t x, int incx):
 
 cpdef sgemv(size_t handle, int trans, int m, int n, float alpha, size_t A,
             int lda, size_t x, int incx, float beta, size_t y, int incy):
+    setStream(handle, stream.get_current_stream().ptr)
     with nogil:
         status = cublasSgemv(
             <Handle>handle, <Operation>trans, m, n, &alpha,
@@ -291,6 +301,7 @@ cpdef sgemv(size_t handle, int trans, int m, int n, float alpha, size_t A,
 
 cpdef dgemv(size_t handle, int trans, int m, int n, double alpha, size_t A,
             int lda, size_t x, int incx, double beta, size_t y, int incy):
+    setStream(handle, stream.get_current_stream().ptr)
     with nogil:
         status = cublasDgemv(
             <Handle>handle, <Operation>trans, m, n, &alpha,
@@ -300,6 +311,7 @@ cpdef dgemv(size_t handle, int trans, int m, int n, double alpha, size_t A,
 
 cpdef sger(size_t handle, int m, int n, float alpha, size_t x, int incx,
            size_t y, int incy, size_t A, int lda):
+    setStream(handle, stream.get_current_stream().ptr)
     with nogil:
         status = cublasSger(
             <Handle>handle, m, n, &alpha, <float*>x, incx, <float*>y, incy,
@@ -309,6 +321,7 @@ cpdef sger(size_t handle, int m, int n, float alpha, size_t x, int incx,
 
 cpdef dger(size_t handle, int m, int n, double alpha, size_t x, int incx,
            size_t y, int incy, size_t A, int lda):
+    setStream(handle, stream.get_current_stream().ptr)
     with nogil:
         status = cublasDger(
             <Handle>handle, m, n, &alpha, <double*>x, incx, <double*>y, incy,
@@ -323,6 +336,7 @@ cpdef dger(size_t handle, int m, int n, double alpha, size_t x, int incx,
 cpdef sgemm(size_t handle, int transa, int transb,
             int m, int n, int k, float alpha, size_t A, int lda,
             size_t B, int ldb, float beta, size_t C, int ldc):
+    setStream(handle, stream.get_current_stream().ptr)
     with nogil:
         status = cublasSgemm(
             <Handle>handle, <Operation>transa, <Operation>transb, m, n, k,
@@ -333,6 +347,7 @@ cpdef sgemm(size_t handle, int transa, int transb,
 cpdef dgemm(size_t handle, int transa, int transb,
             int m, int n, int k, double alpha, size_t A, int lda,
             size_t B, int ldb, double beta, size_t C, int ldc):
+    setStream(handle, stream.get_current_stream().ptr)
     with nogil:
         status = cublasDgemm(
             <Handle>handle, <Operation>transa, <Operation>transb, m, n, k,
@@ -344,6 +359,7 @@ cpdef sgemmBatched(
         size_t handle, int transa, int transb, int m, int n, int k,
         float alpha, size_t Aarray, int lda, size_t Barray, int ldb,
         float beta, size_t Carray, int ldc, int batchCount):
+    setStream(handle, stream.get_current_stream().ptr)
     with nogil:
         status = cublasSgemmBatched(
             <Handle>handle, <Operation>transa, <Operation>transb, m, n, k,
@@ -356,6 +372,7 @@ cpdef dgemmBatched(
         size_t handle, int transa, int transb, int m, int n, int k,
         double alpha, size_t Aarray, int lda, size_t Barray, int ldb,
         double beta, size_t Carray, int ldc, int batchCount):
+    setStream(handle, stream.get_current_stream().ptr)
     with nogil:
         status = cublasDgemmBatched(
             <Handle>handle, <Operation>transa, <Operation>transb, m, n, k,
@@ -370,6 +387,7 @@ cpdef dgemmBatched(
 cpdef sgeam(size_t handle, int transa, int transb, int m, int n,
             float alpha, size_t A, int lda, float beta, size_t B, int ldb,
             size_t C, int ldc):
+    setStream(handle, stream.get_current_stream().ptr)
     with nogil:
         status = cublasSgeam(
             <Handle>handle, <Operation>transa, <Operation>transb, m, n,
@@ -381,6 +399,7 @@ cpdef sgeam(size_t handle, int transa, int transb, int m, int n,
 cpdef dgeam(size_t handle, int transa, int transb, int m, int n,
             double alpha, size_t A, int lda, double beta, size_t B, int ldb,
             size_t C, int ldc):
+    setStream(handle, stream.get_current_stream().ptr)
     with nogil:
         status = cublasDgeam(
             <Handle>handle, <Operation>transa, <Operation>transb, m, n,
@@ -391,6 +410,7 @@ cpdef dgeam(size_t handle, int transa, int transb, int m, int n,
 
 cpdef sdgmm(size_t handle, int mode, int m, int n, size_t A, int lda,
             size_t x, int incx, size_t C, int ldc):
+    setStream(handle, stream.get_current_stream().ptr)
     with nogil:
         status = cublasSdgmm(
             <Handle>handle, <SideMode>mode, m, n, <float*>A, lda, <float*>x,
@@ -403,6 +423,7 @@ cpdef sgemmEx(
         float alpha, size_t A, int Atype, int lda, size_t B,
         int Btype, int ldb, float beta, size_t C, int Ctype,
         int ldc):
+    setStream(handle, stream.get_current_stream().ptr)
     with nogil:
         status = cublasSgemmEx(
             <Handle>handle, <Operation>transa, <Operation>transb, m, n, k,
@@ -414,6 +435,7 @@ cpdef sgemmEx(
 
 cpdef sgetrfBatched(size_t handle, int n, size_t Aarray, int lda,
                     size_t PivotArray, size_t infoArray, int batchSize):
+    setStream(handle, stream.get_current_stream().ptr)
     with nogil:
         status = cublasSgetrfBatched(
             <Handle>handle, n, <float**>Aarray, lda, <int*>PivotArray,
@@ -424,6 +446,7 @@ cpdef sgetrfBatched(size_t handle, int n, size_t Aarray, int lda,
 cpdef sgetriBatched(
         size_t handle, int n, size_t Aarray, int lda, size_t PivotArray,
         size_t Carray, int ldc, size_t infoArray, int batchSize):
+    setStream(handle, stream.get_current_stream().ptr)
     with nogil:
         status = cublasSgetriBatched(
             <Handle>handle, n, <const float**>Aarray, lda, <int*>PivotArray,
