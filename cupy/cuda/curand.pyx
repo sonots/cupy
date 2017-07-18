@@ -4,7 +4,7 @@
 cimport cython
 
 from cupy.cuda cimport driver
-
+from cupy.cuda import stream
 
 ###############################################################################
 # Extern
@@ -134,24 +134,28 @@ cpdef setGeneratorOrdering(size_t generator, int order):
 ###############################################################################
 
 cpdef generate(size_t generator, size_t outputPtr, size_t num):
+    setStream(generator, stream.get_current_stream().ptr)
     status = curandGenerate(
         <Generator>generator, <unsigned int*>outputPtr, num)
     check_status(status)
 
 
 cpdef generateLongLong(size_t generator, size_t outputPtr, size_t num):
+    setStream(generator, stream.get_current_stream().ptr)
     status = curandGenerateLongLong(
         <Generator>generator, <unsigned long long*>outputPtr, num)
     check_status(status)
 
 
 cpdef generateUniform(size_t generator, size_t outputPtr, size_t num):
+    setStream(generator, stream.get_current_stream().ptr)
     status = curandGenerateUniform(
         <Generator>generator, <float*>outputPtr, num)
     check_status(status)
 
 
 cpdef generateUniformDouble(size_t generator, size_t outputPtr, size_t num):
+    setStream(generator, stream.get_current_stream().ptr)
     status = curandGenerateUniformDouble(
         <Generator>generator, <double*>outputPtr, num)
     check_status(status)
@@ -163,6 +167,7 @@ cpdef generateNormal(size_t generator, size_t outputPtr, size_t n,
         msg = ('curandGenerateNormal can only generate even number of '
                'random variables simultaneously. See issue #390 for detail.')
         raise ValueError(msg)
+    setStream(generator, stream.get_current_stream().ptr)
     status = curandGenerateNormal(
         <Generator>generator, <float*>outputPtr, n, mean, stddev)
     check_status(status)
@@ -174,6 +179,7 @@ cpdef generateNormalDouble(size_t generator, size_t outputPtr, size_t n,
         msg = ('curandGenerateNormalDouble can only generate even number of '
                'random variables simultaneously. See issue #390 for detail.')
         raise ValueError(msg)
+    setStream(generator, stream.get_current_stream().ptr)
     status = curandGenerateNormalDouble(
         <Generator>generator, <double*>outputPtr, n, mean, stddev)
     check_status(status)
@@ -185,6 +191,7 @@ def generateLogNormal(size_t generator, size_t outputPtr, size_t n,
         msg = ('curandGenerateLogNormal can only generate even number of '
                'random variables simultaneously. See issue #390 for detail.')
         raise ValueError(msg)
+    setStream(generator, stream.get_current_stream().ptr)
     status = curandGenerateLogNormal(
         <Generator>generator, <float*>outputPtr, n, mean, stddev)
     check_status(status)
@@ -197,6 +204,7 @@ cpdef generateLogNormalDouble(size_t generator, size_t outputPtr, size_t n,
                'of random variables simultaneously. See issue #390 for '
                'detail.')
         raise ValueError(msg)
+    setStream(generator, stream.get_current_stream().ptr)
     status = curandGenerateLogNormalDouble(
         <Generator>generator, <double*>outputPtr, n, mean, stddev)
     check_status(status)
@@ -204,6 +212,7 @@ cpdef generateLogNormalDouble(size_t generator, size_t outputPtr, size_t n,
 
 cpdef generatePoisson(size_t generator, size_t outputPtr, size_t n,
                       double lam):
+    setStream(generator, stream.get_current_stream().ptr)
     status = curandGeneratePoisson(
         <Generator>generator, <unsigned int*>outputPtr, n, lam)
     check_status(status)
