@@ -16,7 +16,7 @@ cdef class Chunk:
         readonly size_t ptr
         readonly Py_ssize_t offset
         readonly Py_ssize_t size
-        public object stream
+        object _stream
         public Chunk prev
         public Chunk next
         public bint in_use

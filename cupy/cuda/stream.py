@@ -1,19 +1,35 @@
+import weakref
 from cupy.cuda import runtime
-import threading
 
-
-thread_local = threading.local()
-streams = {}
+streams = weakref.WeakValueDictionary()
 
 
 def get_streams():
+    """Gets available streams.
+
+    Returns:
+        ~weakref.WeakValueDictionary:
+            streams whose keys are stream ptr and values are stream objects.
+    """
     return streams
 
 
 def get_current_stream():
-    if not hasattr(thread_local, 'current_stream'):
-        thread_local.current_stream = None
-    return thread_local.current_stream
+    """Gets current stream.
+
+    Returns:
+        ~cupy.cuda.Stream: stream object
+    """
+    return current_stream()
+
+
+def get_current_stream_ref():
+    """Gets current stream.
+
+    Returns:
+        ~cupy.cuda.Stream: weakref to stream object
+    """
+    return current_stream
 
 
 class Event(object):
@@ -123,29 +139,36 @@ class Stream(object):
             self.ptr = runtime.streamCreateWithFlags(runtime.streamNonBlocking)
         else:
             self.ptr = runtime.streamCreate()
-        streams = get_streams()
+        global streams
         streams[self.ptr] = self
 
     def __del__(self):
         if self.ptr:
             runtime.streamDestroy(self.ptr)
-            thread_local.current_stream = None
-            streams = get_streams()
+            global current_stream
+            current_stream = weakref.ref(Stream.null)
+            global streams
             del streams[self.ptr]
 
     def __enter__(self):
-        thread_local.current_stream = self
+        global current_stream
+        current_stream = weakref.ref(self)
         return self
 
     def __exit__(self, *args):
-        thread_local.current_stream = None
+        global current_stream
+        current_stream = weakref.ref(Stream.null)
 
     def use(self):
         """Makes this stream current.
 
         If you want to switch a stream temporarily, use the *with* statement.
+
+        .. note::
+            not thread-safe.
         """
-        thread_local.current_stream = self
+        global current_stream
+        current_stream = weakref.ref(Stream.null)
         return self
 
     @property
@@ -202,3 +225,4 @@ class Stream(object):
 
 
 Stream.null = Stream(null=True)
+current_stream = weakref.ref(Stream.null)

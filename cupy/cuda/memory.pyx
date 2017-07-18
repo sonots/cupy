@@ -5,13 +5,14 @@ import ctypes
 import gc
 import warnings
 import weakref
+import traceback
 
 from cupy.cuda import runtime
 
 from cupy.cuda cimport device
 from cupy.cuda cimport runtime
 from cupy.cuda.stream import Stream
-from cupy.cuda.stream import get_current_stream
+from cupy.cuda.stream import get_current_stream_ref
 
 
 cdef class Memory:
@@ -86,20 +87,33 @@ cdef class Chunk:
         prev (Chunk): prev memory pointer if split from a larger allocation
         next (Chunk): next memory pointer if split from a larger allocation
         in_use (boolen): in_use flag
-        stream (cupy.cuda.Stream): CUDA stream.
+        stream (cupy.cuda.Stream): weakref of CUDA stream.
     """
 
-    def __init__(self, mem, Py_ssize_t offset, Py_ssize_t size, stream=None):
+    def __init__(self, mem, Py_ssize_t offset, Py_ssize_t size,
+                 stream=weakref.ref(Stream.null)):
         assert mem.ptr > 0 or offset == 0
         self.mem = mem
         self.device = mem.device
         self.ptr = mem.ptr + offset
         self.offset = offset
         self.size = size
-        self.stream = None
+        self._stream = stream
         self.prev = None
         self.next = None
         self.in_use = False
+
+    @property
+    def stream(self):
+        return self._stream
+
+    @stream.setter
+    def stream(self, stream):
+        if isinstance(stream, weakref.ref):
+            self._stream = stream
+        else:
+            self._stream = weakref.ref(stream)
+
 
 cdef class MemoryPointer:
 
@@ -385,7 +399,7 @@ cdef class SingleDeviceMemoryPool:
         self._allocation_unit_size = 512
         self._initial_bins_size = 1024
         self._in_use = {}
-        self._free = collections.defaultdict(list)
+        self._free = weakref.WeakKeyDictionary()
         self._alloc = allocator
         self._weakref = weakref.ref(self)
 
@@ -399,16 +413,24 @@ cdef class SingleDeviceMemoryPool:
         unit = self._allocation_unit_size
         return (size - 1) // unit
 
-    cpdef list _arena(self, stream=None):
-        return self._free[stream]
+    cpdef list _arena(self, stream=weakref.ref(Stream.null)):
+        stream = stream() # deference to use WeakKeyDictionary
+        if stream is None: # stream is deleted
+            return None
+        else:
+            if stream not in self._free:
+                self._free[stream] = []
+            return self._free[stream]
 
-    cpdef list _free_list(self, Py_ssize_t index, stream=None):
+    cpdef list _free_list(self, Py_ssize_t index, stream=weakref.ref(Stream.null)):
         self._grow_free_if_necessary(index + 1, stream)
         return self._arena(stream)[index]
 
-    cpdef void _grow_free_if_necessary(self, Py_ssize_t size, stream=None):
+    cpdef void _grow_free_if_necessary(self, Py_ssize_t size, stream=weakref.ref(Stream.null)):
         """Extend bins (_free) if necessary"""
         arena = self._arena(stream)
+        if arena is None:
+            return
         current_size = len(arena)
         if current_size >= size:
             return
@@ -466,7 +488,7 @@ cdef class SingleDeviceMemoryPool:
         if size == 0:
             return MemoryPointer(Memory(0), 0)
 
-        stream = get_current_stream()
+        stream = get_current_stream_ref()
         size = self._round_size(size)
         index = self._bin_index_from_size(size)
         # find best-fit, or a smallest larger allocation
@@ -596,6 +618,7 @@ cdef class MemoryPool(object):
     """
 
     def __init__(self, allocator=_malloc):
+        import pdb; pdb.set_trace()
         self._pools = collections.defaultdict(
             lambda: SingleDeviceMemoryPool(allocator))
 
