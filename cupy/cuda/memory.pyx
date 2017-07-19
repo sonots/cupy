@@ -7,6 +7,7 @@ import warnings
 import weakref
 
 from cupy.cuda import runtime
+from cupy.cuda import stream as stream_module
 
 from cupy.cuda cimport device
 from cupy.cuda cimport runtime
@@ -73,6 +74,7 @@ cdef class Chunk:
         mem (Memory): The device memory buffer.
         offset (int): An offset bytes from the head of the buffer.
         size (int): Chunk size in bytes.
+        stream (cupy.cuda.Stream): CUDA stream.
 
     Attributes:
         device (cupy.cuda.Device): Device whose memory the pointer refers to.
@@ -83,15 +85,17 @@ cdef class Chunk:
         prev (Chunk): prev memory pointer if split from a larger allocation
         next (Chunk): next memory pointer if split from a larger allocation
         in_use (boolen): in_use flag
+        stream (cupy.cuda.Stream): CUDA stream.
     """
 
-    def __init__(self, mem, Py_ssize_t offset, Py_ssize_t size):
+    def __init__(self, mem, Py_ssize_t offset, Py_ssize_t size, stream):
         assert mem.ptr > 0 or offset == 0
         self.mem = mem
         self.device = mem.device
         self.ptr = mem.ptr + offset
         self.offset = offset
         self.size = size
+        self.stream = stream
         self.prev = None
         self.next = None
         self.in_use = False
@@ -378,9 +382,9 @@ cdef class SingleDeviceMemoryPool:
         # cudaMalloc() is aligned to at least 512 bytes
         # cf. https://gist.github.com/sonots/41daaa6432b1c8b27ef782cd14064269
         self._allocation_unit_size = 512
-        self._initial_bins_size = 1024
+        self._initial_bins_length = 1024
         self._in_use = {}
-        self._free = [[] for i in range(self._initial_bins_size)]
+        self._free = {}
         self._alloc = allocator
         self._weakref = weakref.ref(self)
 
@@ -390,18 +394,31 @@ cdef class SingleDeviceMemoryPool:
         return (((size + unit - 1) // unit) * unit)
 
     cpdef Py_ssize_t _bin_index_from_size(self, Py_ssize_t size):
-        """Get appropriate bins (_free) index from the memory size"""
+        """Get appropriate bin index from the memory size"""
         unit = self._allocation_unit_size
         return (size - 1) // unit
 
-    cpdef void _grow_free_if_necessary(self, Py_ssize_t size):
-        """Extend bins (_free) size if necessary"""
-        current_size = len(self._free)
-        if current_size >= size:
+    cpdef list _arena(self, stream):
+        """Get appropriate arena (list of bins) of a given stream"""
+        if stream not in self._free:
+            self._free[stream] = [[] for i in range(self._initial_bins_length)]
+        return self._free[stream]
+
+    cpdef list _free_list(self, stream, Py_ssize_t size):
+        """Get appropriate free_list or bin (list of chunks) of a given size"""
+        index = self._bin_index_from_size(size)
+        arena = self._arena(stream)
+        self._grow_arena_if_necessary(arena, index + 1)
+        return arena[index]
+
+    cpdef void _grow_arena_if_necessary(self, arena, Py_ssize_t length):
+        """Extend arena (list of bins) if necessary"""
+        current_length = len(arena)
+        if current_length >= length:
             return
-        growth_size = size - current_size
-        growth = [[] for i in range(growth_size)]
-        self._free.extend(growth)
+        growth_length = length - current_length
+        growth = [[] for i in range(growth_length)]
+        arena.extend(growth)
 
     cpdef tuple _split(self, Chunk chunk, Py_ssize_t size):
         """Split contiguous block of a larger allocation"""
@@ -412,8 +429,11 @@ cdef class SingleDeviceMemoryPool:
         cdef Chunk head
         cdef Chunk remaining
         cdef int index
-        head = Chunk(chunk.mem, chunk.offset, size)
-        remaining = Chunk(chunk.mem, chunk.offset + size, chunk.size - size)
+        mem = chunk.mem
+        offset = chunk.offset
+        stream = chunk.stream
+        head = Chunk(mem, offset, size, stream)
+        remaining = Chunk(mem, offset + size, chunk.size - size, stream)
         if chunk.prev is not None:
             head.prev = chunk.prev
             chunk.prev.next = head
@@ -422,17 +442,17 @@ cdef class SingleDeviceMemoryPool:
             chunk.next.prev = remaining
         head.next = remaining
         remaining.prev = head
-        index = self._bin_index_from_size(remaining.size)
-        self._free[index].append(remaining)
+        self._free_list(stream, remaining.size).append(remaining)
         return (head, remaining)
 
     cpdef Chunk _merge(self, Chunk head, Chunk remaining):
         """Merge previously splitted block (chunk)"""
         assert not head.in_use
         assert not remaining.in_use
+        assert head.stream == remaining.stream
         cdef Chunk merged
         size = head.size + remaining.size
-        merged = Chunk(head.mem, head.offset, size)
+        merged = Chunk(head.mem, head.offset, size, head.stream)
         if head.prev is not None:
             merged.prev = head.prev
             merged.prev.next = merged
@@ -444,18 +464,19 @@ cdef class SingleDeviceMemoryPool:
     cpdef MemoryPointer malloc(self, Py_ssize_t size):
         cdef list free_list = None
         cdef Chunk chunk = None
-        cdef MemoryPointer memptr
         cdef Memory mem
 
         if size == 0:
             return MemoryPointer(Memory(0), 0)
 
+        stream = stream_module.get_current_stream()
         size = self._round_size(size)
         index = self._bin_index_from_size(size)
         # find best-fit, or a smallest larger allocation
-        length = len(self._free)
+        arena = self._arena(stream)
+        length = len(arena)
         for i in range(index, length):
-            free_list = self._free[i]
+            free_list = arena[i]
             if free_list:
                 chunk = free_list.pop()
                 chunk, _remaining = self._split(chunk, size)
@@ -476,9 +497,10 @@ cdef class SingleDeviceMemoryPool:
                         raise
                     gc.collect()
                     mem = self._alloc(size).mem
-            chunk = Chunk(mem, 0, size)
+            chunk = Chunk(mem, 0, size, stream)
 
         chunk.in_use = True
+        chunk.stream = stream
         self._in_use[chunk.ptr] = chunk
         pmem = PooledMemory(chunk, self._weakref)
         return MemoryPointer(pmem, 0)
@@ -490,30 +512,31 @@ cdef class SingleDeviceMemoryPool:
         chunk = self._in_use.pop(ptr, None)
         if chunk is None:
             raise RuntimeError('Cannot free out-of-pool memory')
+        stream = chunk.stream
 
         chunk.in_use = False
         if chunk.next and not chunk.next.in_use:
-            index = self._bin_index_from_size(chunk.next.size)
-            self._free[index].remove(chunk.next)
+            assert stream == chunk.next.stream
+            self._free_list(stream, chunk.next.size).remove(chunk.next)
             chunk = self._merge(chunk, chunk.next)
 
         if chunk.prev and not chunk.prev.in_use:
-            index = self._bin_index_from_size(chunk.prev.size)
-            self._free[index].remove(chunk.prev)
+            assert stream == chunk.prev.stream
+            self._free_list(stream, chunk.prev.size).remove(chunk.prev)
             chunk = self._merge(chunk.prev, chunk)
 
-        index = self._bin_index_from_size(chunk.size)
-        self._grow_free_if_necessary(index + 1)
-        self._free[index].append(chunk)
+        chunk.stream = stream
+        self._free_list(stream, chunk.size).append(chunk)
 
     cpdef free_all_blocks(self):
         # Free all **non-split** chunks
         cdef list free_list
         cdef Chunk chunk
-        for free_list in self._free:
-            for chunk in free_list:
-                if not chunk.prev and not chunk.next:
-                    free_list.remove(chunk)
+        for arena in self._free.itervalues():
+            for free_list in arena:
+                for chunk in free_list:
+                    if not chunk.prev and not chunk.next:
+                        free_list.remove(chunk)
 
     cpdef free_all_free(self):
         warnings.warn(
@@ -523,8 +546,9 @@ cdef class SingleDeviceMemoryPool:
 
     cpdef n_free_blocks(self):
         cdef Py_ssize_t n = 0
-        for v in self._free:
-            n += len(v)
+        for arena in self._free.itervalues():
+            for v in arena:
+                n += len(v)
         return n
 
     cpdef used_bytes(self):
@@ -535,9 +559,10 @@ cdef class SingleDeviceMemoryPool:
 
     cpdef free_bytes(self):
         cdef Py_ssize_t size = 0
-        for free_list in self._free:
-            for chunk in free_list:
-                size += chunk.size
+        for arena in self._free.itervalues():
+            for free_list in arena:
+                for chunk in free_list:
+                    size += chunk.size
         return size
 
     cpdef total_bytes(self):
