@@ -9,7 +9,7 @@ cdef class Function:
         public size_t ptr
 
     cpdef linear_launch(self, size_t size, args, size_t shared_mem=*,
-                        size_t block_max_size=*, stream=*)
+                        size_t block_max_size=*)
 
 
 cdef class Module:
