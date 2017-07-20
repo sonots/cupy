@@ -16,6 +16,7 @@ cdef class Chunk:
         readonly size_t ptr
         readonly Py_ssize_t offset
         readonly Py_ssize_t size
+        public object stream
         public Chunk prev
         public Chunk next
         public bint in_use
@@ -74,7 +75,9 @@ cdef class SingleDeviceMemoryPool:
     cpdef total_bytes(self)
     cpdef Py_ssize_t _round_size(self, Py_ssize_t size)
     cpdef Py_ssize_t _bin_index_from_size(self, Py_ssize_t size)
-    cpdef void _grow_free_if_necessary(self, Py_ssize_t size)
+    cpdef list _arena(self, stream=?)
+    cpdef list _free_list(self, Py_ssize_t index, stream=?)
+    cpdef void _grow_free_if_necessary(self, Py_ssize_t size, stream=?)
     cpdef tuple _split(self, Chunk chunk, Py_ssize_t size)
     cpdef Chunk _merge(self, Chunk head, Chunk remaining)
 
