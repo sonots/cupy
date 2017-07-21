@@ -1,5 +1,6 @@
 from cupy.cuda import runtime
 import threading
+import weakref
 
 
 thread_local = threading.local()
@@ -7,8 +8,10 @@ thread_local = threading.local()
 
 def get_current_stream():
     if not hasattr(thread_local, 'current_stream'):
-        thread_local.current_stream = Stream.null
-    return thread_local.current_stream
+        thread_local.current_stream = weakref.ref(Stream.null)
+    elif thread_local.current_stream() is None:
+        thread_local.current_stream = weakref.ref(Stream.null)
+    return thread_local.current_stream()
 
 
 class Event(object):
@@ -137,11 +140,12 @@ class Stream(object):
         if not hasattr(thread_local, 'prev_stream_stack'):
             thread_local.prev_stream_stack = []
         thread_local.prev_stream_stack.append(get_current_stream())
-        thread_local.current_stream = self
+        thread_local.current_stream = weakref.ref(self)
         return self
 
     def __exit__(self, *args):
-        thread_local.current_stream = thread_local.prev_stream_stack.pop()
+        thread_local.current_stream = weakref.ref(
+            thread_local.prev_stream_stack.pop())
 
     def use(self):
         """Makes this stream current.
@@ -154,7 +158,7 @@ class Stream(object):
                 'Stream device must be same as the current '
                 'device: stream device = %d while current = %d'
                 % (self.device, device))
-        thread_local.current_stream = self
+        thread_local.current_stream = weakref.ref(self)
         return self
 
     @property
