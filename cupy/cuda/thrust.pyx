@@ -7,7 +7,7 @@ import numpy
 from libcpp.vector cimport vector
 
 from cupy.cuda cimport common
-from cupy.cuda import stream
+from cupy.cuda import stream as stream_module
 
 
 ###############################################################################
@@ -28,7 +28,7 @@ cpdef sort(dtype, size_t start, vector.vector[ptrdiff_t]& shape):
 
     cdef void *_start
     _start = <void *>start
-    cdef size_t strm = <size_t>(stream.get_current_stream().ptr)
+    cdef size_t strm = <size_t>(stream_module.get_current_stream().ptr)
 
     # TODO(takagi): Support float16 and bool
     if dtype == numpy.int8:
@@ -60,7 +60,7 @@ cpdef lexsort(dtype, size_t idx_start, size_t keys_start, size_t k, size_t n):
 
     idx_ptr = <size_t *>idx_start
     keys_ptr = <void *>keys_start
-    cdef size_t strm = <size_t>(stream.get_current_stream().ptr)
+    cdef size_t strm = <size_t>(stream_module.get_current_stream().ptr)
 
     # TODO(takagi): Support float16 and bool
     if dtype == numpy.int8:
@@ -97,7 +97,7 @@ cpdef argsort(dtype, size_t idx_start, size_t data_start, size_t num):
     idx_ptr = <size_t *>idx_start
     data_ptr = <void *>data_start
     n = <size_t>num
-    strm = <size_t>(stream.get_current_stream().ptr)
+    strm = <size_t>(stream_module.get_current_stream().ptr)
 
     # TODO(takagi): Support float16 and bool
     if dtype == numpy.int8:
