@@ -74,7 +74,7 @@ cdef class Chunk:
         mem (Memory): The device memory buffer.
         offset (int): An offset bytes from the head of the buffer.
         size (int): Chunk size in bytes.
-        stream (cupy.cuda.Stream): CUDA stream.
+        stream_ref (weakref.ref): weakref.ref object of cupy.cuda.Stream.
 
     Attributes:
         device (cupy.cuda.Device): Device whose memory the pointer refers to.
@@ -85,17 +85,17 @@ cdef class Chunk:
         prev (Chunk): prev memory pointer if split from a larger allocation
         next (Chunk): next memory pointer if split from a larger allocation
         in_use (boolen): in_use flag
-        stream (cupy.cuda.Stream): CUDA stream.
+        stream_ref (weakref.ref): weakref.ref object of cupy.cuda.Stream.
     """
 
-    def __init__(self, mem, Py_ssize_t offset, Py_ssize_t size, stream):
+    def __init__(self, mem, Py_ssize_t offset, Py_ssize_t size, stream_ref):
         assert mem.ptr > 0 or offset == 0
         self.mem = mem
         self.device = mem.device
         self.ptr = mem.ptr + offset
         self.offset = offset
         self.size = size
-        self.stream = stream
+        self.stream_ref = stream_ref
         self.prev = None
         self.next = None
         self.in_use = False
@@ -398,16 +398,17 @@ cdef class SingleDeviceMemoryPool:
         unit = self._allocation_unit_size
         return (size - 1) // unit
 
-    cpdef list _arena(self, stream):
+    cpdef list _arena(self, stream_ref):
         """Get appropriate arena (list of bins) of a given stream"""
-        if stream not in self._free:
-            self._free[stream] = [[] for i in range(self._initial_bins_length)]
-        return self._free[stream]
+        if stream_ref not in self._free:
+            length = self._initial_bins_length
+            self._free[stream_ref] = [[] for i in range(length)]
+        return self._free[stream_ref]
 
-    cpdef list _free_list(self, stream, Py_ssize_t size):
+    cpdef list _free_list(self, stream_ref, Py_ssize_t size):
         """Get appropriate free_list or bin (list of chunks) of a given size"""
         index = self._bin_index_from_size(size)
-        arena = self._arena(stream)
+        arena = self._arena(stream_ref)
         self._grow_arena_if_necessary(arena, index + 1)
         return arena[index]
 
@@ -428,12 +429,13 @@ cdef class SingleDeviceMemoryPool:
             return (chunk, None)
         cdef Chunk head
         cdef Chunk remaining
-        cdef int index
+
         mem = chunk.mem
         offset = chunk.offset
-        stream = chunk.stream
-        head = Chunk(mem, offset, size, stream)
-        remaining = Chunk(mem, offset + size, chunk.size - size, stream)
+        stream_ref = chunk.stream_ref
+        head = Chunk(mem, offset, size, stream_ref)
+        remaining = Chunk(mem, offset + size, chunk.size - size, stream_ref)
+
         if chunk.prev is not None:
             head.prev = chunk.prev
             chunk.prev.next = head
@@ -442,17 +444,17 @@ cdef class SingleDeviceMemoryPool:
             chunk.next.prev = remaining
         head.next = remaining
         remaining.prev = head
-        self._free_list(stream, remaining.size).append(remaining)
+        self._free_list(stream_ref, remaining.size).append(remaining)
         return (head, remaining)
 
     cpdef Chunk _merge(self, Chunk head, Chunk remaining):
         """Merge previously splitted block (chunk)"""
         assert not head.in_use
         assert not remaining.in_use
-        assert head.stream == remaining.stream
+        assert head.stream_ref == remaining.stream_ref
         cdef Chunk merged
         size = head.size + remaining.size
-        merged = Chunk(head.mem, head.offset, size, head.stream)
+        merged = Chunk(head.mem, head.offset, size, head.stream_ref)
         if head.prev is not None:
             merged.prev = head.prev
             merged.prev.next = merged
@@ -469,11 +471,11 @@ cdef class SingleDeviceMemoryPool:
         if size == 0:
             return MemoryPointer(Memory(0), 0)
 
-        stream = stream_module.get_current_stream()
+        stream_ref = weakref.ref(stream_module.get_current_stream())
         size = self._round_size(size)
         index = self._bin_index_from_size(size)
         # find best-fit, or a smallest larger allocation
-        arena = self._arena(stream)
+        arena = self._arena(stream_ref)
         length = len(arena)
         for i in range(index, length):
             free_list = arena[i]
@@ -497,36 +499,35 @@ cdef class SingleDeviceMemoryPool:
                         raise
                     gc.collect()
                     mem = self._alloc(size).mem
-            chunk = Chunk(mem, 0, size, stream)
+            chunk = Chunk(mem, 0, size, stream_ref)
 
         chunk.in_use = True
-        chunk.stream = stream
+        chunk.stream_ref = stream_ref
         self._in_use[chunk.ptr] = chunk
         pmem = PooledMemory(chunk, self._weakref)
         return MemoryPointer(pmem, 0)
 
     cpdef free(self, size_t ptr, Py_ssize_t size):
         cdef Chunk chunk
-        cdef int index
 
         chunk = self._in_use.pop(ptr, None)
         if chunk is None:
             raise RuntimeError('Cannot free out-of-pool memory')
-        stream = chunk.stream
+        stream_ref = chunk.stream_ref
 
         chunk.in_use = False
         if chunk.next and not chunk.next.in_use:
-            assert stream == chunk.next.stream
-            self._free_list(stream, chunk.next.size).remove(chunk.next)
+            assert stream_ref == chunk.next.stream_ref
+            self._free_list(stream_ref, chunk.next.size).remove(chunk.next)
             chunk = self._merge(chunk, chunk.next)
 
         if chunk.prev and not chunk.prev.in_use:
-            assert stream == chunk.prev.stream
-            self._free_list(stream, chunk.prev.size).remove(chunk.prev)
+            assert stream_ref == chunk.prev.stream_ref
+            self._free_list(stream_ref, chunk.prev.size).remove(chunk.prev)
             chunk = self._merge(chunk.prev, chunk)
 
-        chunk.stream = stream
-        self._free_list(stream, chunk.size).append(chunk)
+        chunk.stream_ref = stream_ref
+        self._free_list(stream_ref, chunk.size).append(chunk)
 
     cpdef free_all_blocks(self):
         # Free all **non-split** chunks
