@@ -12,7 +12,7 @@ from cupy.cuda cimport device
 from cupy.cuda cimport runtime
 
 
-cdef class Memory:
+class Memory:
 
     """Memory allocation on a CUDA device.
 
@@ -32,7 +32,7 @@ cdef class Memory:
             self.device = device.Device()
             self.ptr = runtime.malloc(size)
 
-    def __dealloc__(self):
+    def __del__(self):
         if self.ptr:
             runtime.free(self.ptr)
 
@@ -329,7 +329,7 @@ cpdef set_allocator(allocator=_malloc):
     _current_allocator = allocator
 
 
-cdef class PooledMemory(Memory):
+class PooledMemory(Memory):
 
     """Memory allocation for a memory pool.
 
@@ -344,11 +344,11 @@ cdef class PooledMemory(Memory):
         self.size = chunk.size
         self.pool = pool
 
-    def __dealloc__(self):
+    def __del__(self):
         if self.ptr != 0:
             self.free()
 
-    cpdef free(self):
+    def free(self):
         """Frees the memory buffer and returns it to the memory pool.
 
         This function actually does not free the buffer. It just returns the
@@ -445,7 +445,6 @@ cdef class SingleDeviceMemoryPool:
         cdef list free_list = None
         cdef Chunk chunk = None
         cdef MemoryPointer memptr
-        cdef Memory mem
 
         if size == 0:
             return MemoryPointer(Memory(0), 0)
