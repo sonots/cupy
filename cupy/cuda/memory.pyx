@@ -12,7 +12,7 @@ from cupy.cuda cimport device
 from cupy.cuda cimport runtime
 
 
-cdef class Memory:
+cdef class CMemory:
 
     """Memory allocation on a CUDA device.
 
@@ -32,13 +32,48 @@ cdef class Memory:
             self.device = device.Device()
             self.ptr = runtime.malloc(size)
 
-    def __dealloc__(self):
+    def _del(self):
         if self.ptr:
             runtime.free(self.ptr)
 
     def __int__(self):
         """Returns the pointer value to the head of the allocation."""
         return self.ptr
+
+
+class Memory(object):
+    def __init__(self, size):
+        self._main = CMemory(size)
+
+    def __del__(self):
+        self._main._del()
+
+    def __int__(self):
+        return self._main.__int__()
+
+    @property
+    def size(self):
+        return self._main.size
+
+    @size.setter
+    def size(self, v):
+        self._main.size = v
+
+    @property
+    def device(self):
+        return self._main.device
+
+    @device.setter
+    def device(self, v):
+        self._main.device = v
+
+    @property
+    def ptr(self):
+        return self._main.ptr
+
+    @ptr.setter
+    def ptr(self, v):
+        self._main.ptr = v
 
 
 cdef set _peer_access_checked = set()
@@ -329,7 +364,7 @@ cpdef set_allocator(allocator=_malloc):
     _current_allocator = allocator
 
 
-cdef class PooledMemory(Memory):
+cdef class CPooledMemory(CMemory):
 
     """Memory allocation for a memory pool.
 
@@ -344,7 +379,7 @@ cdef class PooledMemory(Memory):
         self.size = chunk.size
         self.pool = pool
 
-    def __dealloc__(self):
+    def _del(self):
         if self.ptr != 0:
             self.free()
 
@@ -362,6 +397,12 @@ cdef class PooledMemory(Memory):
         self.size = 0
         self.device = None
 
+class PooledMemory(Memory):
+    def __init__(self, chunk, pool):
+        self._main = CPooledMemory(chunk, pool)
+
+    def free(self):
+        self._main.free()
 
 cdef class SingleDeviceMemoryPool:
     """Memory pool implementation for single device.
@@ -444,8 +485,6 @@ cdef class SingleDeviceMemoryPool:
     cpdef MemoryPointer malloc(self, Py_ssize_t size):
         cdef list free_list = None
         cdef Chunk chunk = None
-        cdef MemoryPointer memptr
-        cdef Memory mem
 
         if size == 0:
             return MemoryPointer(Memory(0), 0)

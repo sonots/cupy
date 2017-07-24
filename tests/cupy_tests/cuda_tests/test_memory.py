@@ -10,14 +10,38 @@ class MockMemory(memory.Memory):
     cur_ptr = 1
 
     def __init__(self, size):
-        self.ptr = MockMemory.cur_ptr
+        self._ptr = MockMemory.cur_ptr
         MockMemory.cur_ptr += size
-        self.size = size
-        self.device = None
+        self._size = size
+        self._device = None
 
     def __del__(self):
-        self.ptr = 0
+        self._ptr = 0
         pass
+
+    @property
+    def size(self):
+        return self._size
+
+    @size.setter
+    def size(self, v):
+        self._size = v
+
+    @property
+    def device(self):
+        return self._device
+
+    @device.setter
+    def device(self, v):
+        self._device = v
+
+    @property
+    def ptr(self):
+        return self._ptr
+
+    @ptr.setter
+    def ptr(self, v):
+        self._ptr = v
 
 
 def mock_alloc(size):
