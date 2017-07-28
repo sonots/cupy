@@ -169,15 +169,18 @@ cdef class MemoryPointer:
             runtime.memcpy(self.ptr, src.ptr, size,
                            runtime.memcpyDefault)
 
-    cpdef copy_from_device_async(self, MemoryPointer src, size_t size, stream):
+    cpdef copy_from_device_async(self, MemoryPointer src, size_t size, stream=None):
         """Copies a memory from a (possibly different) device asynchronously.
 
         Args:
             src (cupy.cuda.MemoryPointer): Source memory pointer.
             size (int): Size of the sequence in bytes.
             stream (cupy.cuda.Stream): CUDA stream.
+                The default uses CUDA stream of the current context.
 
         """
+        if stream is None:
+            stream = stream_module.get_current_stream()
         if size > 0:
             _set_peer_access(src.device.id, self.device.id)
             runtime.memcpyAsync(self.ptr, src.ptr, size,
@@ -195,7 +198,7 @@ cdef class MemoryPointer:
             runtime.memcpy(self.ptr, mem.value, size,
                            runtime.memcpyHostToDevice)
 
-    cpdef copy_from_host_async(self, mem, size_t size, stream):
+    cpdef copy_from_host_async(self, mem, size_t size, stream=None):
         """Copies a memory sequence from the host memory asynchronously.
 
         Args:
@@ -203,8 +206,11 @@ cdef class MemoryPointer:
                 memory.
             size (int): Size of the sequence in bytes.
             stream (cupy.cuda.Stream): CUDA stream.
+                The default uses CUDA stream of the current context.
 
         """
+        if stream is None:
+            stream = stream_module.get_current_stream()
         if size > 0:
             runtime.memcpyAsync(self.ptr, mem.value, size,
                                 runtime.memcpyHostToDevice, stream.ptr)
@@ -227,7 +233,7 @@ cdef class MemoryPointer:
         else:
             self.copy_from_host(mem, size)
 
-    cpdef copy_from_async(self, mem, size_t size, stream):
+    cpdef copy_from_async(self, mem, size_t size, stream=None):
         """Copies a memory sequence from an arbitrary place asynchronously.
 
         This function is a useful interface that selects appropriate one from
@@ -239,8 +245,11 @@ cdef class MemoryPointer:
                 pointer.
             size (int): Size of the sequence in bytes.
             stream (cupy.cuda.Stream): CUDA stream.
+                The default uses CUDA stream of the current context.
 
         """
+        if stream is None:
+            stream = stream_module.get_current_stream()
         if isinstance(mem, MemoryPointer):
             self.copy_from_device_async(mem, size, stream)
         else:
@@ -258,7 +267,7 @@ cdef class MemoryPointer:
             runtime.memcpy(mem.value, self.ptr, size,
                            runtime.memcpyDeviceToHost)
 
-    cpdef copy_to_host_async(self, mem, size_t size, stream):
+    cpdef copy_to_host_async(self, mem, size_t size, stream=None):
         """Copies a memory sequence to the host memory asynchronously.
 
         Args:
@@ -266,8 +275,11 @@ cdef class MemoryPointer:
                 memory.
             size (int): Size of the sequence in bytes.
             stream (cupy.cuda.Stream): CUDA stream.
+                The default uses CUDA stream of the current context.
 
         """
+        if stream is None:
+            stream = stream_module.get_current_stream()
         if size > 0:
             runtime.memcpyAsync(mem.value, self.ptr, size,
                                 runtime.memcpyDeviceToHost, stream.ptr)
@@ -283,15 +295,18 @@ cdef class MemoryPointer:
         if size > 0:
             runtime.memset(self.ptr, value, size)
 
-    cpdef memset_async(self, int value, size_t size, stream):
+    cpdef memset_async(self, int value, size_t size, stream=None):
         """Fills a memory sequence by constant byte value asynchronously.
 
         Args:
             value (int): Value to fill.
             size (int): Size of the sequence in bytes.
             stream (cupy.cuda.Stream): CUDA stream.
+                The default uses CUDA stream of the current context.
 
         """
+        if stream is None:
+            stream = stream_module.get_current_stream()
         if size > 0:
             runtime.memsetAsync(self.ptr, value, size, stream.ptr)
 
