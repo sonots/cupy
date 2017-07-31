@@ -445,7 +445,6 @@ cdef class SingleDeviceMemoryPool:
         return merged
 
     cpdef MemoryPointer malloc(self, Py_ssize_t size):
-        print('fix_317 malloc(size={})'.format(size))
         cdef list free_list = None
         cdef Chunk chunk = None
         cdef MemoryPointer memptr
@@ -486,6 +485,7 @@ cdef class SingleDeviceMemoryPool:
         print('fix_317   [push in_use] ptr={} size={} chunk={}'.format(chunk.ptr, chunk.size, chunk))
         self._in_use[chunk.ptr] = chunk
         pmem = PooledMemory(chunk, self._weakref)
+        print('fix_317 malloc(size={}) ptr={} PooledMemory={}'.format(size, chunk.ptr, pmem))
         return MemoryPointer(pmem, 0)
 
     cpdef free(self, size_t ptr, Py_ssize_t size):
