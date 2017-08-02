@@ -504,14 +504,20 @@ cdef class SingleDeviceMemoryPool:
         if chunk.next and not chunk.next.in_use:
             index = self._bin_index_from_size(chunk.next.size)
             six.print_('  {"hook":"remove next free_list","ptr":%d,"chunk_size":%d,"chunk_id":"%s"}' % (chunk.next.ptr, chunk.next.size, hex(id(chunk.next))), flush=True)
-            self._free[index].remove(chunk.next)
-            chunk = self._merge(chunk, chunk.next)
+            try:
+                self._free[index].remove(chunk.next)
+                chunk = self._merge(chunk, chunk.next)
+            except ValueError as e:
+                six.print_('  {"hook":"failed remove next free_list","ptr":%d,"chunk_size":%d,"chunk_id":"%s"}' % (chunk.next.ptr, chunk.next.size, hex(id(chunk.next))), flush=True)
 
         if chunk.prev and not chunk.prev.in_use:
             index = self._bin_index_from_size(chunk.prev.size)
             six.print_('  {"hook":"remove prev free_list","ptr":%d,"chunk_size":%d,"chunk_id":"%s"}' % (chunk.prev.ptr, chunk.prev.size, hex(id(chunk.prev))), flush=True)
-            self._free[index].remove(chunk.prev)
-            chunk = self._merge(chunk.prev, chunk)
+            try:
+                self._free[index].remove(chunk.prev)
+                chunk = self._merge(chunk.prev, chunk)
+            except ValueError as e:
+                six.print_('  {"hook":"failed remove prev free_list","ptr":%d,"chunk_size":%d,"chunk_id":"%s"}' % (chunk.prev.ptr, chunk.prev.size, hex(id(chunk.prev))), flush=True)
 
         index = self._bin_index_from_size(chunk.size)
         self._grow_free_if_necessary(index + 1)
