@@ -6,6 +6,7 @@ import gc
 import warnings
 import weakref
 import six
+import threading
 
 from cupy.cuda import runtime
 
@@ -358,7 +359,7 @@ class PooledMemory(Memory):
         """
         pool = self.pool()
         if pool and self.ptr != 0:
-            six.print_('{"hook":"free","ptr":%d,"chunk_size":%d,"pmem_id":"%s"}' % (self.ptr, self.size, hex(id(self))), flush=True)
+            six.print_('{"tid":%d,"hook":"free","ptr":%d,"chunk_size":%d,"pmem_id":"%s"}' % (id(threading.current_thread()), self.ptr, self.size, hex(id(self))), flush=True)
             pool.free(self.ptr, self.size)
         self.ptr = 0
         self.size = 0
@@ -411,7 +412,7 @@ cdef class SingleDeviceMemoryPool:
         assert chunk.size >= size
         if chunk.size == size:
             return (chunk, None)
-        six.print_('  {"hook":"split","split_size":%d,"ptr":%d,"chunk_size":%d,"chunk_id":"%s"}' % (size, chunk.ptr, chunk.size, hex(id(chunk))), flush=True)
+        six.print_('  {"tid":%d,"hook":"split","split_size":%d,"ptr":%d,"chunk_size":%d,"chunk_id":"%s"}' % (id(threading.current_thread()), size, chunk.ptr, chunk.size, hex(id(chunk))), flush=True)
         cdef Chunk head
         cdef Chunk remaining
         cdef int index
@@ -426,7 +427,7 @@ cdef class SingleDeviceMemoryPool:
         head.next = remaining
         remaining.prev = head
         index = self._bin_index_from_size(remaining.size)
-        six.print_('  {"hook":"push remaining free_list","ptr":%d,"chunk_size":%d,"chunk_id":"%s"}' % (remaining.ptr, remaining.size, hex(id(remaining))), flush=True)
+        six.print_('  {"tid":%d,"hook":"push remaining free_list","ptr":%d,"chunk_size":%d,"chunk_id":"%s"}' % (id(threading.current_thread()), remaining.ptr, remaining.size, hex(id(remaining))), flush=True)
         self._free[index].append(remaining)
         return (head, remaining)
 
@@ -443,7 +444,7 @@ cdef class SingleDeviceMemoryPool:
         if remaining.next is not None:
             merged.next = remaining.next
             merged.next.prev = merged
-        six.print_('  {"hook":"merged","ptr":%d,"chunk_size":%d,"chunk_id":"%s"}' % (merged.ptr, merged.size, hex(id(merged))), flush=True)
+        six.print_('  {"tid":%d,"hook":"merged","ptr":%d,"chunk_size":%d,"chunk_id":"%s"}' % (id(threading.current_thread()), merged.ptr, merged.size, hex(id(merged))), flush=True)
         return merged
 
     cpdef MemoryPointer malloc(self, Py_ssize_t size):
@@ -454,7 +455,7 @@ cdef class SingleDeviceMemoryPool:
         if size == 0:
             return MemoryPointer(Memory(0), 0)
 
-        six.print_('{"hook":"malloc","size":%d}' % (size), flush=True)
+        six.print_('{"tid":%d,"hook":"malloc","size":%d}' % (id(threading.current_thread()), size), flush=True)
         size = self._round_size(size)
         index = self._bin_index_from_size(size)
         # find best-fit, or a smallest larger allocation
@@ -463,7 +464,7 @@ cdef class SingleDeviceMemoryPool:
             free_list = self._free[i]
             if free_list:
                 chunk = free_list.pop()
-                six.print_('  {"hook":"malloc pop free_list","ptr":%d,"chunk_size":%d,"chunk_id":"%s"}' % (chunk.ptr, chunk.size, hex(id(chunk))), flush=True)
+                six.print_('  {"tid":%d,"hook":"malloc pop free_list","ptr":%d,"chunk_size":%d,"chunk_id":"%s"}' % (id(threading.current_thread()), chunk.ptr, chunk.size, hex(id(chunk))), flush=True)
                 chunk, _remaining = self._split(chunk, size)
                 break
 
@@ -485,10 +486,10 @@ cdef class SingleDeviceMemoryPool:
             chunk = Chunk(mem, 0, size)
 
         chunk.in_use = True
-        six.print_('  {"hook":"malloc push in_use","ptr":%d,"chunk_size":%d,"chunk_id":"%s"}' % (chunk.ptr, chunk.size, hex(id(chunk))), flush=True)
+        six.print_('  {"tid":%d,"hook":"malloc push in_use","ptr":%d,"chunk_size":%d,"chunk_id":"%s"}' % (id(threading.current_thread()), chunk.ptr, chunk.size, hex(id(chunk))), flush=True)
         self._in_use[chunk.ptr] = chunk
         pmem = PooledMemory(chunk, self._weakref)
-        six.print_('  {"hook":"malloc_postprocess","ptr":%d,"chunk_size":%d,"chunk_id":"%s","pmem_id":"%s"}' % (chunk.ptr, chunk.size, hex(id(chunk)), hex(id(pmem))), flush=True)
+        six.print_('  {"tid":%d,"hook":"malloc_postprocess","ptr":%d,"chunk_size":%d,"chunk_id":"%s","pmem_id":"%s"}' % (id(threading.current_thread()), chunk.ptr, chunk.size, hex(id(chunk)), hex(id(pmem))), flush=True)
         return MemoryPointer(pmem, 0)
 
     cpdef free(self, size_t ptr, Py_ssize_t size):
@@ -499,29 +500,29 @@ cdef class SingleDeviceMemoryPool:
         if chunk is None:
             raise RuntimeError('Cannot free out-of-pool memory')
 
-        six.print_('  {"hook":"free pop in_use","ptr":%d,"chunk_size":%d,"chunk_id":"%s"}' % (chunk.ptr, chunk.size, hex(id(chunk))), flush=True)
+        six.print_('  {"tid":%d,"hook":"free pop in_use","ptr":%d,"chunk_size":%d,"chunk_id":"%s"}' % (id(threading.current_thread()), chunk.ptr, chunk.size, hex(id(chunk))), flush=True)
         chunk.in_use = False
         if chunk.next and not chunk.next.in_use:
             index = self._bin_index_from_size(chunk.next.size)
-            six.print_('  {"hook":"remove next free_list","ptr":%d,"chunk_size":%d,"chunk_id":"%s"}' % (chunk.next.ptr, chunk.next.size, hex(id(chunk.next))), flush=True)
+            six.print_('  {"tid":%d,"hook":"remove next free_list","ptr":%d,"chunk_size":%d,"chunk_id":"%s"}' % (id(threading.current_thread()), chunk.next.ptr, chunk.next.size, hex(id(chunk.next))), flush=True)
             try:
                 self._free[index].remove(chunk.next)
                 chunk = self._merge(chunk, chunk.next)
             except ValueError as e:
-                six.print_('  {"hook":"failed remove next free_list","ptr":%d,"chunk_size":%d,"chunk_id":"%s"}' % (chunk.next.ptr, chunk.next.size, hex(id(chunk.next))), flush=True)
+                six.print_('  {"tid":%d,"hook":"failed remove next free_list","ptr":%d,"chunk_size":%d,"chunk_id":"%s"}' % (id(threading.current_thread()), chunk.next.ptr, chunk.next.size, hex(id(chunk.next))), flush=True)
 
         if chunk.prev and not chunk.prev.in_use:
             index = self._bin_index_from_size(chunk.prev.size)
-            six.print_('  {"hook":"remove prev free_list","ptr":%d,"chunk_size":%d,"chunk_id":"%s"}' % (chunk.prev.ptr, chunk.prev.size, hex(id(chunk.prev))), flush=True)
+            six.print_('  {"tid":%d,"hook":"remove prev free_list","ptr":%d,"chunk_size":%d,"chunk_id":"%s"}' % (id(threading.current_thread()), chunk.prev.ptr, chunk.prev.size, hex(id(chunk.prev))), flush=True)
             try:
                 self._free[index].remove(chunk.prev)
                 chunk = self._merge(chunk.prev, chunk)
             except ValueError as e:
-                six.print_('  {"hook":"failed remove prev free_list","ptr":%d,"chunk_size":%d,"chunk_id":"%s"}' % (chunk.prev.ptr, chunk.prev.size, hex(id(chunk.prev))), flush=True)
+                six.print_('  {"tid":%d,"hook":"failed remove prev free_list","ptr":%d,"chunk_size":%d,"chunk_id":"%s"}' % (id(threading.current_thread()), chunk.prev.ptr, chunk.prev.size, hex(id(chunk.prev))), flush=True)
 
         index = self._bin_index_from_size(chunk.size)
         self._grow_free_if_necessary(index + 1)
-        six.print_('  {"hook":"free push free_list","ptr":%d,"chunk_size":%d,"chunk_id":"%s"}' % (chunk.ptr, chunk.size, hex(id(chunk))), flush=True)
+        six.print_('  {"tid":%d,"hook":"free push free_list","ptr":%d,"chunk_size":%d,"chunk_id":"%s"}' % (id(threading.current_thread()), chunk.ptr, chunk.size, hex(id(chunk))), flush=True)
         self._free[index].append(chunk)
 
     cpdef free_all_blocks(self):
