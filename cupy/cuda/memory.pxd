@@ -45,6 +45,7 @@ cdef class SingleDeviceMemoryPool:
         object _free
         object __weakref__
         object _weakref
+        object _lock
         readonly Py_ssize_t _allocation_unit_size
         readonly Py_ssize_t _initial_bins_size
 
