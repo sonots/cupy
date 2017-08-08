@@ -29,7 +29,8 @@ cdef class MemoryPointer:
         readonly size_t ptr
 
     cpdef copy_from_device(self, MemoryPointer src, Py_ssize_t size)
-    cpdef copy_from_device_async(self, MemoryPointer src, size_t size, stream=?)
+    cpdef copy_from_device_async(self, MemoryPointer src, size_t size,
+                                 stream=?)
     cpdef copy_from_host(self, mem, size_t size)
     cpdef copy_from_host_async(self, mem, size_t size, stream=?)
     cpdef copy_from(self, mem, size_t size)

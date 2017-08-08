@@ -169,7 +169,8 @@ cdef class MemoryPointer:
             runtime.memcpy(self.ptr, src.ptr, size,
                            runtime.memcpyDefault)
 
-    cpdef copy_from_device_async(self, MemoryPointer src, size_t size, stream=None):
+    cpdef copy_from_device_async(self, MemoryPointer src, size_t size,
+                                 stream=None):
         """Copies a memory from a (possibly different) device asynchronously.
 
         Args:
