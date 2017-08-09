@@ -3,7 +3,6 @@
 import collections
 import ctypes
 import gc
-import threading
 import warnings
 import weakref
 
@@ -382,8 +381,6 @@ cdef class SingleDeviceMemoryPool:
         self._free = [set() for i in range(self._initial_bins_size)]
         self._alloc = allocator
         self._weakref = weakref.ref(self)
-        self._free_lock = threading.Lock()
-        self._in_use_lock = threading.Lock()
 
     cpdef Py_ssize_t _round_size(self, Py_ssize_t size):
         """Round up the memory size to fit memory alignment of cudaMalloc."""
@@ -453,11 +450,13 @@ cdef class SingleDeviceMemoryPool:
         # find best-fit, or a smallest larger allocation
         length = len(self._free)
         for i in range(index, length):
-            with self._free_lock:
-                free_list = self._free[i]
-                if free_list:
+            free_list = self._free[i]
+            if free_list:
+                try:
                     chunk = free_list.pop()
                     break
+                except KeyError:
+                    pass
 
         if chunk:
             chunk, remaining = self._split(chunk, size)
@@ -478,12 +477,10 @@ cdef class SingleDeviceMemoryPool:
                     mem = self._alloc(size).mem
             chunk = Chunk(mem, 0, size)
 
-        with self._in_use_lock:
-            self._in_use[chunk.ptr] = chunk
+        self._in_use[chunk.ptr] = chunk
         if remaining:
             remaining_index = self._bin_index_from_size(remaining.size)
-            with self._free_lock:
-                self._free[remaining_index].add(remaining)
+            self._free[remaining_index].add(remaining)
         pmem = PooledMemory(chunk, self._weakref)
         return MemoryPointer(pmem, 0)
 
@@ -491,46 +488,39 @@ cdef class SingleDeviceMemoryPool:
         cdef Chunk chunk
         cdef int index
 
-        with self._in_use_lock:
-            chunk = self._in_use.pop(ptr, None)
+        chunk = self._in_use.pop(ptr, None)
         if chunk is None:
             raise RuntimeError('Cannot free out-of-pool memory')
 
         if chunk.next:
-            chunk_next = None
             index = self._bin_index_from_size(chunk.next.size)
-            with self._free_lock:
-                if chunk.next in self._free[index]:
-                    self._free[index].remove(chunk.next)
-                    chunk_next = chunk.next
-            if chunk_next:
-                chunk = self._merge(chunk, chunk_next)
+            try:
+                self._free[index].remove(chunk.next)
+                chunk = self._merge(chunk, chunk.next)
+            except KeyError:
+                pass
 
         if chunk.prev:
-            chunk_prev = None
             index = self._bin_index_from_size(chunk.prev.size)
-            with self._free_lock:
-                if chunk.prev in self._free[index]:
-                    self._free[index].remove(chunk.prev)
-                    chunk_prev = chunk.prev
-            if chunk_prev:
-                chunk = self._merge(chunk_prev, chunk)
+            try:
+                self._free[index].remove(chunk.prev)
+                chunk = self._merge(chunk.prev, chunk)
+            except KeyError:
+                pass
 
         index = self._bin_index_from_size(chunk.size)
         self._grow_free_if_necessary(index + 1)
-        with self._free_lock:
-            self._free[index].add(chunk)
+        self._free[index].add(chunk)
 
     cpdef free_all_blocks(self):
         # Free all **non-split** chunks
-        with self._free_lock:
-            for i in range(len(self._free)):
-                keep_list = set()
-                for chunk in self._free[i]:
-                    if chunk.prev or chunk.next:
-                        keep_list.add(chunk)
-                self._free[i].clear()
-                self._free[i] = keep_list
+        for i in range(len(self._free)):
+            keep_list = set()
+            for chunk in self._free[i]:
+                if chunk.prev or chunk.next:
+                    keep_list.add(chunk)
+            self._free[i].clear()
+            self._free[i] = keep_list
 
     cpdef free_all_free(self):
         warnings.warn(
@@ -540,24 +530,21 @@ cdef class SingleDeviceMemoryPool:
 
     cpdef n_free_blocks(self):
         cdef Py_ssize_t n = 0
-        with self._free_lock:
-            for v in self._free:
-                n += len(v)
+        for v in self._free:
+            n += len(v)
         return n
 
     cpdef used_bytes(self):
         cdef Py_ssize_t size = 0
-        with self._in_use_lock:
-            for chunk in self._in_use.itervalues():
-                size += chunk.size
+        for chunk in self._in_use.itervalues():
+            size += chunk.size
         return size
 
     cpdef free_bytes(self):
         cdef Py_ssize_t size = 0
-        with self._free_lock:
-            for free_list in self._free:
-                for chunk in free_list:
-                    size += chunk.size
+        for free_list in self._free:
+            for chunk in free_list:
+                size += chunk.size
         return size
 
     cpdef total_bytes(self):
@@ -629,6 +616,9 @@ cdef class MemoryPool(object):
     cpdef n_free_blocks(self):
         """Count the total number of free blocks.
 
+        Note:
+            This method is not thread-safe.
+
         Returns:
             int: The total number of free blocks.
         """
@@ -637,6 +627,9 @@ cdef class MemoryPool(object):
 
     cpdef used_bytes(self):
         """Get the total number of bytes used.
+
+        Note:
+            This method is not thread-safe.
 
         Returns:
             int: The total number of bytes used.
@@ -647,6 +640,9 @@ cdef class MemoryPool(object):
     cpdef free_bytes(self):
         """Get the total number of bytes acquired but not used in the pool.
 
+        Note:
+            This method is not thread-safe.
+
         Returns:
             int: The total number of bytes acquired but not used in the pool.
         """
@@ -655,6 +651,9 @@ cdef class MemoryPool(object):
 
     cpdef total_bytes(self):
         """Get the total number of bytes acquired in the pool.
+
+        Note:
+            This method is not thread-safe.
 
         Returns:
             int: The total number of bytes acquired in the pool.
