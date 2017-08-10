@@ -55,6 +55,7 @@ setup(
               'cupy.sorting',
               'cupy.sparse',
               'cupy.statistics',
+              'cupy.fastrlock',
               'cupy.testing'],
     package_data={
         'cupy': [
