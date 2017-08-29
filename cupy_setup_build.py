@@ -358,7 +358,7 @@ def check_extensions(extensions):
                 raise RuntimeError(msg)
 
 
-def get_ext_modules(use_cython=False):
+def get_ext_modules():
     arg_options = cupy_setup_options
 
     # We need to call get_config_vars to initialize _config_vars in distutils
@@ -367,11 +367,13 @@ def get_ext_modules(use_cython=False):
     compiler = ccompiler.new_compiler()
     sysconfig.customize_compiler(compiler)
 
+    use_cython = check_cython_version()
     extensions = make_extensions(arg_options, compiler, use_cython)
 
     if use_cython:
         extensions = cythonize(extensions, arg_options)
 
+    check_extensions(extensions)
     return extensions
 
 
@@ -508,18 +510,6 @@ class _MSVCCompiler(msvccompiler.MSVCCompiler):
         return other_objects + cu_objects
 
 
-class sdist_with_cython(sdist.sdist):
-
-    """Custom `sdist` command with cyhonizing."""
-
-    def cythonize(self):
-        if not check_cython_version():
-            raise RuntimeError('Cython is required to make sdist.')
-        get_ext_modules(True)  # convert Cython files to cpp files
-
-    sub_commands = sdist.sdist.sub_commands + [('cythonize', cythonize)]
-
-
 class custom_build_ext(build_ext.build_ext):
 
     """Custom `build_ext` command to include CUDA C source files."""
@@ -542,7 +532,4 @@ class custom_build_ext(build_ext.build_ext):
             # Intentionally causes DistutilsPlatformError in
             # ccompiler.new_compiler() function to hook.
             self.compiler = 'nvidia'
-        if check_cython_version():
-            get_ext_modules(True)  # convert Cython files to cpp files
-        check_extensions(self.extensions)
         build_ext.build_ext.run(self)

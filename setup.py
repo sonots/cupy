@@ -19,9 +19,7 @@ set 1 to CUPY_PYTHON_350_FORCE environment variable."""
         sys.exit(1)
 
 
-setup_requires = [
-    'fastrlock>=0.3',
-]
+setup_requires = []
 install_requires = [
     'nose',
     'numpy>=1.9.0',
@@ -31,7 +29,6 @@ install_requires = [
 
 ext_modules = cupy_setup_build.get_ext_modules()
 build_ext = cupy_setup_build.custom_build_ext
-sdist = cupy_setup_build.sdist_with_cython
 
 setup(
     name='cupy',
@@ -93,6 +90,5 @@ setup(
     tests_require=['mock',
                    'nose'],
     ext_modules=ext_modules,
-    cmdclass={'build_ext': build_ext,
-              'sdist': sdist},
+    cmdclass={'build_ext': build_ext},
 )
