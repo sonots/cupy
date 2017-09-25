@@ -730,17 +730,23 @@ cdef class SingleDeviceMemoryPool:
         return new_mem
 
     cpdef _reset_memptr(self, Chunk chunk, Chunk new_chunk):
-        # in_use.pop and in_use_memptr.pop is done by PooledMemory.free
-        weakref_memptr = self._in_use_memptr.get(chunk.ptr)
-        self._in_use[new_chunk.ptr] = new_chunk
-        self._in_use_memptr[new_chunk.ptr] = weakref_memptr
-        pmem = PooledMemory(new_chunk, self._weakref)
-        memptr = weakref_memptr()
-        try:
-            memptr.reset(pmem, 0)
-        except AttributeError:
-            # memptr is removed from app layer in another thread
-            pass
+        if chunk.ptr in self._in_use:
+            chunk = self._in_use.pop(chunk.ptr)
+            memptr_ref = self._in_use_memptr.pop(chunk.ptr)
+            self._in_use[new_chunk.ptr] = new_chunk
+            self._in_use_memptr[new_chunk.ptr] = memptr_ref
+
+            pmem = PooledMemory(new_chunk, self._weakref)
+            memptr = memptr_ref()
+            memptr.mem.ptr = 0  # to skip free
+            try:
+                memptr.reset(pmem, 0)
+            except AttributeError:
+                # memptr is removed from app layer in another thread
+                pass
+        else:
+            if self._remove_from_free_list(chunk.size, chunk):
+                self._append_to_free_list(new_chunk.size, new_chunk)
 
     cpdef _realloc_all(self):
         """Reallocate all memory of in-use to mitigate fragmentation."""
@@ -788,10 +794,7 @@ cdef class SingleDeviceMemoryPool:
                     while chunk is not None:
                         new_chunk, remaining = self._split(
                             remaining, chunk.size)
-                        if chunk.ptr in self._in_use:
-                            self._reset_memptr(chunk, new_chunk)
-                        else:
-                            self._append_to_free_list(new_chunk.size, new_chunk)
+                        self._reset_memptr(chunk, new_chunk)
                         chunk = chunk.next
                     # ToDo(sonots): can we assure __del__ is called?
                     self._remove_from_free_list(mem.size, Chunk(mem, 0, mem.size))
