@@ -429,6 +429,7 @@ class PooledMemory(Memory):
         buffer to the memory pool for reuse.
 
         """
+        print('free', self.ptr, self.size)
         cdef Py_ssize_t ptr
         ptr = self.ptr
         if ptr == 0:
@@ -666,6 +667,7 @@ cdef class SingleDeviceMemoryPool:
                         raise
                     runtime.deviceSynchronize()
                     self._realloc_all()
+                    print('_realloc_all')
                     gc.collect()
                     try:
                         mem = self._alloc(size).mem
@@ -728,20 +730,17 @@ cdef class SingleDeviceMemoryPool:
         return new_mem
 
     cpdef _reset_memptr(self, Chunk chunk, Chunk new_chunk):
-        if chunk.ptr in self._in_use:
-            weakref_memptr = self._in_use_memptr.get(chunk.ptr)
-            self._in_use[new_chunk.ptr] = new_chunk
-            self._in_use_memptr[new_chunk.ptr] = weakref_memptr
-            pmem = PooledMemory(new_chunk, self._weakref)
-            memptr = weakref_memptr()
-            try:
-                memptr.reset(pmem, 0)
-            except AttributeError:
-                # memptr is removed from app layer in another thread
-                pass
-        else:
-            if self._remove_from_free_list(chunk.size, chunk):
-                self._append_to_free_list(new_chunk.size, new_chunk)
+        # in_use.pop and in_use_memptr.pop is done by PooledMemory.free
+        weakref_memptr = self._in_use_memptr.get(chunk.ptr)
+        self._in_use[new_chunk.ptr] = new_chunk
+        self._in_use_memptr[new_chunk.ptr] = weakref_memptr
+        pmem = PooledMemory(new_chunk, self._weakref)
+        memptr = weakref_memptr()
+        try:
+            memptr.reset(pmem, 0)
+        except AttributeError:
+            # memptr is removed from app layer in another thread
+            pass
 
     cpdef _realloc_all(self):
         """Reallocate all memory of in-use to mitigate fragmentation."""
@@ -760,6 +759,8 @@ cdef class SingleDeviceMemoryPool:
         # reallocate from smaller blocks because we assume _realloc_all
         # is called when little memory is left
         for size in sorted(ptrs_of_size.keys()):
+            print('size', size, 'len', len(ptrs_of_size[size]))
+            print('used', self.used_bytes(), 'free', self.free_bytes())
             for ptr in sorted(ptrs_of_size[size]):
                 new_memptr = self._realloc(ptr, size)
                 if new_memptr is None:
@@ -780,14 +781,20 @@ cdef class SingleDeviceMemoryPool:
                 rlock.lock_fastrlock(self._in_use_lock, -1, True)
                 try:
                     chunk = self._in_use.get(ptr, None)
+                    mem = chunk.mem
                     if chunk is None:
                         continue
                     remaining = Chunk(new_mem, 0, size)
                     while chunk is not None:
                         new_chunk, remaining = self._split(
                             remaining, chunk.size)
-                        self._reset_memptr(chunk, new_chunk)
+                        if chunk.ptr in self._in_use:
+                            self._reset_memptr(chunk, new_chunk)
+                        else:
+                            self._append_to_free_list(new_chunk.size, new_chunk)
                         chunk = chunk.next
+                    # ToDo(sonots): can we assure __del__ is called?
+                    self._remove_from_free_list(mem.size, Chunk(mem, 0, mem.size))
                 finally:
                     rlock.unlock_fastrlock(self._in_use_lock)
 
